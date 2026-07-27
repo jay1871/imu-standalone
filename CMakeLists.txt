@@ -7,7 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_TESTS "Build unit tests" ON)
 option(BUILD_APPS "Build application executables" ON)
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -32,10 +32,8 @@ target_link_libraries(imu_simulator
   PUBLIC Eigen3::Eigen
 )
 
-set_target_properties(imu_simulator PROPERTIES
-  VERSION ${PROJECT_VERSION}
-  SOVERSION 1
-)
+# NOTE: SOVERSION/VERSION properties removed — they break with spaces in path
+# (OneDrive). Use -DBUILD_SHARED_LIBS=ON only from a path without spaces.
 
 # --- Config Loader Library (adds yaml-cpp dependency) ---
 add_library(imu_simulator_config
