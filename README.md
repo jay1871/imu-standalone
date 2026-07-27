@@ -52,15 +52,19 @@ bash scripts/setup_and_build.sh
 
 ### Allan Variance Validation
 
+Run from the `build/` directory:
+
 ```bash
+cd build
+
 # Quick run (1 hour, fast iteration)
-./build/allan_validation config/adis16607.yaml allan_data.csv 1 1000
+./allan_validation ../config/adis16607.yaml allan_data.csv 1 1000
 
 # Full run (10 hours, proper long-tau resolution)
-./build/allan_validation config/adis16607.yaml allan_data.csv 10 1000
+./allan_validation ../config/adis16607.yaml allan_data.csv 10 1000
 
 # Generate plots
-python3 scripts/allan_variance.py allan_data.csv config/adis16607.yaml --rate 1000
+python3 ../scripts/allan_variance.py allan_data.csv ../config/adis16607.yaml --rate 1000
 ```
 
 ### Command-line arguments

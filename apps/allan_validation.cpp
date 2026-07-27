@@ -133,9 +133,10 @@ int main(int argc, char** argv) {
   std::cout << std::endl;
   std::cout << "Done! Output written to: " << outputPath << std::endl;
   std::cout << std::endl;
-  std::cout << "Next step: run Allan variance analysis:" << std::endl;
-  std::cout << "  python3 scripts/allan_variance.py " << outputPath << " "
-            << configPath << " --rate " << rate << std::endl;
+  std::cout << "Next step: run Allan variance analysis from the same directory:" << std::endl;
+  std::cout << "  python3 <path-to>/scripts/allan_variance.py "
+            << outputPath << " " << configPath << " --rate " << rate
+            << std::endl;
 
   return 0;
 }
