@@ -1,0 +1,166 @@
+# ADIS16607-2 IMU Simulation Parameters
+# Source: ADIS16607 Datasheet Table 1 Specifications
+# All values stored in SI units as expected by ImuSimulator
+#
+# ============================================================================
+# UNIT CONVERSION REFERENCE
+# ============================================================================
+#   deg/sqrt(hr) -> rad/s^(1/2): multiply by (pi/180) / sqrt(3600) = pi/10800
+#   deg/hr -> rad/s:             multiply by (pi/180) / 3600 = pi/648000
+#   deg/sec -> rad/s:            multiply by pi/180
+#   mg -> m/s^2:                 multiply by 9.80665e-3
+#   ug -> m/s^2:                 multiply by 9.80665e-6
+#   m/sec/sqrt(hr) -> m/s^(3/2): multiply by 1/sqrt(3600) = 1/60
+#
+# NOTE ON BIAS INSTABILITY (B):
+#   The datasheet reports "In-Run Bias Stability" which is the MINIMUM of the
+#   Allan deviation curve. The B coefficient used in the NBK Gauss-Markov model
+#   relates to this as:
+#       B_coefficient = bias_stability_allan_min / 0.6645
+#   because sigma_min = B * sqrt(2*ln2/pi) ≈ B * 0.6645
+# ============================================================================
+
+imu_simulator:
+  # ******************************************************************
+  # General Settings
+  # ******************************************************************
+  general_settings:
+    sample_time: 0.001          # (s) 1000 Hz output rate (ADIS16607 Direct Input Sync)
+    seed: 42
+    use_constant_seed: true
+
+  # ******************************************************************
+  # Model Parameter Settings
+  # ******************************************************************
+  model_parameter_settings:
+    # **************** Accelerometer Model Parameters ****************
+    accelerometer:
+      # Velocity Random Walk (VRW) - from datasheet "Velocity Random Walk"
+      # Datasheet: 0.045 m/sec/sqrt(hr) (X,Y), 0.042 m/sec/sqrt(hr) (Z)
+      # SI: VRW / sqrt(3600) => 0.045/60 = 7.500e-4, 0.042/60 = 7.000e-4
+      N: [7.500e-4, 7.500e-4, 7.000e-4]  # (m/s^(3/2))
+
+      # Bias Instability - from datasheet "In-Run Bias Stability"
+      # Datasheet: 7 ug (X,Y), 11 ug (Z) — this is the Allan deviation minimum
+      # SI: (bias_ug * 9.80665e-6) / 0.6645
+      # X,Y: (7e-6 * 9.80665) / 0.6645 = 1.0327e-4 m/s^2
+      # Z:   (11e-6 * 9.80665) / 0.6645 = 1.6228e-4 m/s^2
+      B: [1.0327e-4, 1.0327e-4, 1.6228e-4]  # (m/s^2)
+
+      # Acceleration Random Walk
+      # ESTIMATE - not specified in ADIS16607 datasheet
+      # Update from Allan variance characterization data (long-tau +1/2 slope)
+      K: [1.0e-5, 1.0e-5, 1.0e-5]  # (m/s^(5/2)) ESTIMATE - update from AV characterization
+
+      # Gauss-Markov correlation time
+      # ESTIMATE - not specified in datasheet, typical 100-300s for tactical MEMS
+      # Update from Allan variance characterization data (location of B plateau)
+      correlation_time: [200.0, 200.0, 200.0]  # (s) ESTIMATE - update from AV characterization
+
+      # Turn-on bias interval - from datasheet "Initial Bias Error"
+      # Datasheet: +/-1 mg
+      # SI: 1e-3 * 9.80665 = 9.80665e-3 m/s^2
+      interval_turn_on_bias: [9.80665e-3, 9.80665e-3, 9.80665e-3]  # (m/s^2)
+
+      # Measurement range - from datasheet "Dynamic Range"
+      # Datasheet: +/-40g
+      # SI: 40 * 9.80665 = 392.266 m/s^2
+      measurement_range: [392.266, 392.266, 392.266]  # (m/s^2)
+
+      # Scale factor interval - from datasheet "Initial Sensitivity Error"
+      # Datasheet: +/-0.04%
+      interval_scale_factor: [0.04, 0.04, 0.04]  # (%)
+
+      # Misalignment interval - from datasheet "Axis-to-Axis Orthogonality Error"
+      # Datasheet: +/-0.02 degrees
+      # SI: 0.02 * pi/180 = 3.4907e-4 rad
+      interval_misalignment: [3.4907e-4, 3.4907e-4, 3.4907e-4]  # (rad)
+
+      # Non-orthogonality interval (6 axis pairs)
+      # Same source as misalignment: +/-0.02 degrees = 3.4907e-4 rad
+      interval_non_orthogonality: [3.4907e-4, 3.4907e-4, 3.4907e-4, 3.4907e-4, 3.4907e-4, 3.4907e-4]  # (rad)
+
+      # Resolution (quantization) - from datasheet "Sensitivity" (24-bit mode)
+      # Datasheet: 200000 LSB/g -> resolution = 1/200000 g
+      # SI: (1/200000) * 9.80665 = 4.903e-5 m/s^2/LSB
+      resolution: [4.903e-5, 4.903e-5, 4.903e-5]  # (m/s^2/LSB)
+
+    # ****************** Gyroscope Model Parameters ******************
+    gyroscope:
+      # Angular Random Walk (ARW) - from datasheet "Angular Random Walk"
+      # Datasheet: 0.19 deg/sqrt(hr) (ADIS16607-2)
+      # SI: 0.19 * (pi/180) / sqrt(3600) = 0.19 * pi / 10800 = 5.5269e-5
+      N: [5.5269e-5, 5.5269e-5, 5.5269e-5]  # (rad/s^(1/2))
+
+      # Bias Instability - from datasheet "In-Run Bias Stability"
+      # Datasheet: 2.3 deg/hr (ADIS16607-2) — this is the Allan deviation minimum
+      # SI: (2.3 * pi/648000) / 0.6645
+      # = (1.1154e-5) / 0.6645 = 1.6786e-5 rad/s
+      B: [1.6786e-5, 1.6786e-5, 1.6786e-5]  # (rad/s)
+
+      # Rate Random Walk
+      # ESTIMATE - not specified in ADIS16607 datasheet
+      # Update from Allan variance characterization data (long-tau +1/2 slope)
+      K: [1.0e-7, 1.0e-7, 1.0e-7]  # (rad/s^(3/2)) ESTIMATE - update from AV characterization
+
+      # Gauss-Markov correlation time
+      # ESTIMATE - not specified in datasheet, typical 300-1000s for tactical MEMS gyros
+      # Update from Allan variance characterization data (location of B plateau)
+      correlation_time: [500.0, 500.0, 500.0]  # (s) ESTIMATE - update from AV characterization
+
+      # Turn-on bias interval - from datasheet "Initial Bias Error"
+      # Datasheet: +/-0.2 deg/sec
+      # SI: 0.2 * pi/180 = 3.4907e-3 rad/s
+      interval_turn_on_bias: [3.4907e-3, 3.4907e-3, 3.4907e-3]  # (rad/s)
+
+      # Measurement range - from datasheet "Dynamic Range"
+      # Datasheet: +/-470 deg/sec (ADIS16607-2)
+      # SI: 470 * pi/180 = 8.2030 rad/s
+      measurement_range: [8.2030, 8.2030, 8.2030]  # (rad/s)
+
+      # Scale factor interval - from datasheet "Initial Sensitivity Error"
+      # Datasheet: +/-0.2% (ADIS16607-2)
+      interval_scale_factor: [0.2, 0.2, 0.2]  # (%)
+
+      # Misalignment interval - from datasheet "Axis-to-Axis Orthogonality Error"
+      # Datasheet: +/-0.02 degrees
+      # SI: 0.02 * pi/180 = 3.4907e-4 rad
+      interval_misalignment: [3.4907e-4, 3.4907e-4, 3.4907e-4]  # (rad)
+
+      # Non-orthogonality interval (6 axis pairs)
+      interval_non_orthogonality: [3.4907e-4, 3.4907e-4, 3.4907e-4, 3.4907e-4, 3.4907e-4, 3.4907e-4]  # (rad)
+
+      # Resolution (quantization) - from datasheet "Sensitivity" (24-bit mode)
+      # Datasheet: 16000 LSB/(deg/sec) -> resolution = 1/16000 deg/sec
+      # SI: (1/16000) * pi/180 = 1.0908e-6 rad/s/LSB
+      resolution: [1.0908e-6, 1.0908e-6, 1.0908e-6]  # (rad/s/LSB)
+
+  # ******************************************************************
+  # Model Enable Settings
+  # ******************************************************************
+  model_enable_settings:
+    accelerometer:
+      enable_local_ref_vec: true
+      enable_turn_on_bias: true
+      enable_scaling: true
+      enable_misalignment: true
+      enable_stochastic_error: true
+      enable_saturation: true
+      enable_quantization: true
+
+    gyroscope:
+      enable_local_ref_vec: true
+      enable_turn_on_bias: true
+      enable_scaling: true
+      enable_misalignment: true
+      enable_stochastic_error: true
+      enable_saturation: true
+      enable_quantization: true
+
+  # ******************************************************************
+  # Environment Settings
+  # ******************************************************************
+  environmental_settings:
+    # Wilmington, MA (ADI headquarters) - adjust to your test location
+    start_geo_position_llh: [42.5584, -71.1765, 50.0]  # (deg, deg, m)
+    start_geo_velocity_ned: [0.0, 0.0, 0.0]  # (m/s)
