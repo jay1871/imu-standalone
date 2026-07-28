@@ -87,26 +87,37 @@ imu_simulator:
 
     # ****************** Gyroscope Model Parameters ******************
     gyroscope:
-      # Angular Random Walk (ARW) - from datasheet "Angular Random Walk"
-      # Datasheet: 0.19 deg/sqrt(hr) (ADIS16607-2)
-      # SI: 0.19 * (pi/180) / sqrt(3600) = 0.19 * pi / 10800 = 5.5269e-5
-      N: [5.5269e-5, 5.5269e-5, 5.5269e-5]  # (rad/s^(1/2))
+      # Angular Random Walk (ARW) - from datasheet Allan variance plot (per-axis)
+      # Datasheet Table 1: 0.19 deg/sqrt(hr) (all axes, ADIS16607-2)
+      # From AV plot: X/Y ~ 0.19 deg/sqrt(hr), Z ~ 0.11 deg/sqrt(hr)
+      # SI: ARW * pi / 10800
+      # X: 0.19 * pi/10800 = 5.5269e-5
+      # Y: 0.19 * pi/10800 = 5.5269e-5
+      # Z: 0.11 * pi/10800 = 3.1998e-5
+      N: [5.5269e-5, 5.5269e-5, 3.1998e-5]  # (rad/s^(1/2))
 
-      # Bias Instability - from datasheet "In-Run Bias Stability"
-      # Datasheet: 2.3 deg/hr (ADIS16607-2) — this is the Allan deviation minimum
-      # SI: (2.3 * pi/648000) / 0.6645
-      # = (1.1154e-5) / 0.6645 = 1.6786e-5 rad/s
-      B: [1.6786e-5, 1.6786e-5, 1.6786e-5]  # (rad/s)
+      # Bias Instability - from datasheet Allan variance plot (per-axis)
+      # Datasheet Table 1: 2.3 deg/hr (worst axis, ADIS16607-2)
+      # From AV plot: X ~ 1.1 deg/hr, Y ~ 2.3 deg/hr, Z ~ 0.8 deg/hr
+      # SI: (min_deghr * pi/648000) / 0.6645
+      # X: (1.1 * pi/648000) / 0.6645 = 8.0255e-6
+      # Y: (2.3 * pi/648000) / 0.6645 = 1.6786e-5
+      # Z: (0.8 * pi/648000) / 0.6645 = 5.8367e-6
+      B: [8.0255e-6, 1.6786e-5, 5.8367e-6]  # (rad/s)
 
-      # Rate Random Walk
-      # ESTIMATE - not specified in ADIS16607 datasheet
-      # Update from Allan variance characterization data (long-tau +1/2 slope)
-      K: [1.0e-7, 1.0e-7, 1.0e-7]  # (rad/s^(3/2)) ESTIMATE - update from AV characterization
+      # Rate Random Walk - estimated from datasheet AV plot long-tau slope
+      # ESTIMATE - refine from AV characterization data
+      # X: modest rise after minimum
+      # Y: steep rise (worst axis)
+      # Z: very flat, barely rises
+      K: [8.2e-8, 2.4e-7, 3.9e-8]  # (rad/s^(3/2)) ESTIMATE - update from AV characterization
 
-      # Gauss-Markov correlation time
-      # ESTIMATE - not specified in datasheet, typical 300-1000s for tactical MEMS gyros
-      # Update from Allan variance characterization data (location of B plateau)
-      correlation_time: [500.0, 500.0, 500.0]  # (s) ESTIMATE - update from AV characterization
+      # Gauss-Markov correlation time - estimated from tau at Allan deviation minimum
+      # ESTIMATE - refine from AV characterization data
+      # X: minimum around tau=500s
+      # Y: minimum around tau=200s
+      # Z: minimum around tau=700s
+      correlation_time: [500.0, 200.0, 700.0]  # (s) ESTIMATE - update from AV characterization
 
       # Turn-on bias interval - from datasheet "Initial Bias Error"
       # Datasheet: +/-0.2 deg/sec
