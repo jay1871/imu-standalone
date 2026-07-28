@@ -96,9 +96,9 @@ def main():
     max_tau = args.max_tau if args.max_tau else len(data) / rate / 3.0
 
     # Display unit conversions (from SI)
-    # Accel: m/s² → µg:  divide by 9.80665e-6
+    # Accel: m/s² → µg:  divide by 9.797464e-6
     # Gyro:  rad/s → deg/hr: multiply by (180/pi) * 3600
-    ACCEL_SCALE = 1.0 / 9.80665e-6   # m/s² to µg
+    ACCEL_SCALE = 1.0 / 9.797464e-6   # m/s² to µg
     GYRO_SCALE = (180.0 / np.pi) * 3600.0  # rad/s to deg/hr
 
     sensor_configs = [

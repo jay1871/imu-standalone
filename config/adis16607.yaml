@@ -8,8 +8,8 @@
 #   deg/sqrt(hr) -> rad/s^(1/2): multiply by (pi/180) / sqrt(3600) = pi/10800
 #   deg/hr -> rad/s:             multiply by (pi/180) / 3600 = pi/648000
 #   deg/sec -> rad/s:            multiply by pi/180
-#   mg -> m/s^2:                 multiply by 9.80665e-3
-#   ug -> m/s^2:                 multiply by 9.80665e-6
+#   mg -> m/s^2:                 multiply by 9.797464e-3
+#   ug -> m/s^2:                 multiply by 9.797464e-6
 #   m/sec/sqrt(hr) -> m/s^(3/2): multiply by 1/sqrt(3600) = 1/60
 #
 # NOTE ON BIAS INSTABILITY (B):
@@ -42,10 +42,10 @@ imu_simulator:
 
       # Bias Instability - from datasheet "In-Run Bias Stability"
       # Datasheet: 7 ug (X,Y), 11 ug (Z) — this is the Allan deviation minimum
-      # SI: (bias_ug * 9.80665e-6) / 0.6645
-      # X,Y: (7e-6 * 9.80665) / 0.6645 = 1.0327e-4 m/s^2
-      # Z:   (11e-6 * 9.80665) / 0.6645 = 1.6228e-4 m/s^2
-      B: [1.0327e-4, 1.0327e-4, 1.6228e-4]  # (m/s^2)
+      # SI: (bias_ug * 9.797464e-6) / 0.6645
+      # X,Y: (7e-6 * 9.797464) / 0.6645 = 1.0321e-4 m/s^2
+      # Z:   (11e-6 * 9.797464) / 0.6645 = 1.6219e-4 m/s^2
+      B: [1.0321e-4, 1.0321e-4, 1.6219e-4]  # (m/s^2)
 
       # Acceleration Random Walk
       # ESTIMATE - not specified in ADIS16607 datasheet
@@ -59,13 +59,13 @@ imu_simulator:
 
       # Turn-on bias interval - from datasheet "Initial Bias Error"
       # Datasheet: +/-1 mg
-      # SI: 1e-3 * 9.80665 = 9.80665e-3 m/s^2
-      interval_turn_on_bias: [9.80665e-3, 9.80665e-3, 9.80665e-3]  # (m/s^2)
+      # SI: 1e-3 * 9.797464 = 9.797464e-3 m/s^2
+      interval_turn_on_bias: [9.797464e-3, 9.797464e-3, 9.797464e-3]  # (m/s^2)
 
       # Measurement range - from datasheet "Dynamic Range"
       # Datasheet: +/-40g
-      # SI: 40 * 9.80665 = 392.266 m/s^2
-      measurement_range: [392.266, 392.266, 392.266]  # (m/s^2)
+      # SI: 40 * 9.797464 = 391.899 m/s^2
+      measurement_range: [391.899, 391.899, 391.899]  # (m/s^2)
 
       # Scale factor interval - from datasheet "Initial Sensitivity Error"
       # Datasheet: +/-0.04%
@@ -82,8 +82,8 @@ imu_simulator:
 
       # Resolution (quantization) - from datasheet "Sensitivity" (24-bit mode)
       # Datasheet: 200000 LSB/g -> resolution = 1/200000 g
-      # SI: (1/200000) * 9.80665 = 4.903e-5 m/s^2/LSB
-      resolution: [4.903e-5, 4.903e-5, 4.903e-5]  # (m/s^2/LSB)
+      # SI: (1/200000) * 9.797464 = 4.899e-5 m/s^2/LSB
+      resolution: [4.899e-5, 4.899e-5, 4.899e-5]  # (m/s^2/LSB)
 
     # ****************** Gyroscope Model Parameters ******************
     gyroscope:

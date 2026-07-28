@@ -14,7 +14,7 @@ All rights reserved.
 class ImuSimulatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    const double gToMs2 = 9.80665;  // (g) -> (m/s^2)
+    const double gToMs2 = 9.797464;  // (g) -> (m/s^2)
 
     // Accelerometer simulation parameters, identified with for STIM300 IMU
     imu_simulator::ImuSimParams accSimParams;
