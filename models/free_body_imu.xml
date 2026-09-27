@@ -1,0 +1,43 @@
+<mujoco model="free_body_imu">
+  <!--
+    Minimal model: a free-floating rigid body with an IMU mounted at its center.
+    Used for validating the IMU error model against known inputs.
+
+    The body starts at rest 1m above ground. Gravity pulls it down, so the
+    accelerometer sees ~9.81 m/s^2 along Z (body frame = world frame initially).
+    Gyroscope reads zero unless torques are applied.
+  -->
+
+  <extension>
+    <plugin plugin="mujoco.sensor.imu_nbk"/>
+  </extension>
+
+  <option timestep="0.001" gravity="0 0 -9.81"/>
+
+  <worldbody>
+    <light pos="0 0 3"/>
+    <geom type="plane" size="5 5 0.1" rgba="0.9 0.9 0.9 1"/>
+
+    <body name="imu_body" pos="0 0 10">
+      <freejoint name="imu_joint"/>
+      <geom type="box" size="0.05 0.05 0.02" mass="0.5" rgba="0.2 0.4 0.8 1"/>
+
+      <!-- IMU site: defines the sensor frame. Identity rotation = aligned with body. -->
+      <site name="imu_site" pos="0 0 0" size="0.01"/>
+    </body>
+  </worldbody>
+
+  <!-- Noiseless reference sensors (for comparison / MJX pipeline) -->
+  <sensor>
+    <accelerometer name="acc_true" site="imu_site"/>
+    <gyro name="gyro_true" site="imu_site"/>
+  </sensor>
+
+  <!-- NBK error model plugin sensor -->
+  <sensor>
+    <plugin name="imu_noisy" plugin="mujoco.sensor.imu_nbk"
+            objtype="site" objname="imu_site">
+      <config key="config_path" value="../config/adis16607.yaml"/>
+    </plugin>
+  </sensor>
+</mujoco>

@@ -17,8 +17,7 @@ struct SimulatorConfig {
   ImuSimParams gyroSimParams;
   ImuModelEnableSettings enableSettings;
   double sampleTime;
-  unsigned int seed;
-  bool useConstantSeed;
+  int seed;
   Eigen::Vector3d geoPositionLlh;
   Eigen::Vector3d geoVelocityNed;
 };

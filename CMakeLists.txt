@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_TESTS "Build unit tests" ON)
 option(BUILD_APPS "Build application executables" ON)
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+option(IMU_BUILD_MUJOCO_PLUGIN "Build MuJoCo C sensor plugin (requires mujoco)" OFF)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -32,8 +33,7 @@ target_link_libraries(imu_simulator
   PUBLIC Eigen3::Eigen
 )
 
-# NOTE: SOVERSION/VERSION properties removed — they break with spaces in path
-# (OneDrive). Use -DBUILD_SHARED_LIBS=ON only from a path without spaces.
+# Static libraries are used by default for robust plugin linking.
 
 # --- Config Loader Library (adds yaml-cpp dependency) ---
 add_library(imu_simulator_config
@@ -71,6 +71,14 @@ if(BUILD_TESTS)
   )
 
   add_test(NAME imu_simulator_test COMMAND imu_simulator_test)
+endif()
+
+# --- MuJoCo Sensor Plugin ---
+if(IMU_BUILD_MUJOCO_PLUGIN)
+  # Static libs must be compiled with -fPIC to link into the plugin .so
+  set_target_properties(imu_simulator PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  set_target_properties(imu_simulator_config PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  add_subdirectory(mujoco_plugin)
 endif()
 
 # --- Install ---

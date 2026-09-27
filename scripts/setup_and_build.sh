@@ -47,7 +47,14 @@ echo ""
 echo "Configuring with CMake..."
 mkdir -p build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBUILD_APPS=ON
+
+CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBUILD_APPS=ON"
+if [ -n "$MUJOCO_ROOT" ]; then
+    echo "Found MUJOCO_ROOT: $MUJOCO_ROOT"
+    CMAKE_ARGS="$CMAKE_ARGS -DIMU_BUILD_MUJOCO_PLUGIN=ON -DMUJOCO_ROOT=$MUJOCO_ROOT"
+fi
+
+cmake .. $CMAKE_ARGS
 
 echo ""
 echo "Building..."

@@ -1,0 +1,52 @@
+<mujoco model="spinning_body_imu">
+  <!--
+    A body on a hinge joint with a motor. Produces known angular velocity
+    and centripetal acceleration — useful for testing gyroscope and
+    coupled accelerometer response.
+  -->
+
+  <extension>
+    <plugin plugin="mujoco.sensor.imu_nbk"/>
+  </extension>
+
+  <option timestep="0.001" gravity="0 0 -9.81"/>
+
+  <worldbody>
+    <light pos="0 0 3"/>
+    <geom type="plane" size="5 5 0.1" rgba="0.9 0.9 0.9 1"/>
+
+    <!-- Fixed base -->
+    <body name="base" pos="0 0 0.5">
+      <geom type="cylinder" size="0.02 0.05" rgba="0.5 0.5 0.5 1"/>
+
+      <!-- Spinning arm on Z-axis hinge -->
+      <body name="arm" pos="0 0 0">
+        <joint name="spin" type="hinge" axis="0 0 1"/>
+        <geom type="capsule" fromto="0 0 0 0.3 0 0" size="0.01" mass="0.1"
+              rgba="0.8 0.2 0.2 1"/>
+
+        <!-- IMU at the tip of the arm (0.3m from pivot) -->
+        <site name="imu_site" pos="0.3 0 0" size="0.01"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="spin_motor" joint="spin" gear="1" ctrlrange="-1 1"/>
+  </actuator>
+
+  <!-- Noiseless reference -->
+  <sensor>
+    <accelerometer name="acc_true" site="imu_site"/>
+    <gyro name="gyro_true" site="imu_site"/>
+    <jointvel name="joint_vel" joint="spin"/>
+  </sensor>
+
+  <!-- NBK error model -->
+  <sensor>
+    <plugin name="imu_noisy" plugin="mujoco.sensor.imu_nbk"
+            objtype="site" objname="imu_site">
+      <config key="config_path" value="../config/adis16607.yaml"/>
+    </plugin>
+  </sensor>
+</mujoco>

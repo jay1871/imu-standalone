@@ -1,6 +1,37 @@
+# Build artifacts
 build/
-*.csv
-*.png
-*.txt
+bin/
+lib/
+*.so
+*.a
+*.o
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+
+# Python & environments
+venv/
+*venv*/
+.venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.eggs/
+.pytest_cache/
+
+# Data and plot outputs (keep golden test files)
+*.csv
+!test/golden/*.csv
+*.png
+*.log
+
+# IDE & OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

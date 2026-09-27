@@ -20,7 +20,7 @@ ImuSimulator::ImuSimulator(ImuSimParams accSimParams,
                            ImuSimParams gyroSimParams,
                            ImuModelEnableSettings imuModelEnableSettings,
                            Eigen::Vector3d geoPositionLlh,
-                           Eigen::Vector3d v_eb_n, double dt, unsigned int seed)
+                           Eigen::Vector3d v_eb_n, double dt, int seed)
     : accSimParams_(accSimParams),
       gyroSimParams_(gyroSimParams),
       pAccStochasticErrors_(std::make_shared<ImuStochasticErrors>()),
@@ -31,7 +31,8 @@ ImuSimulator::ImuSimulator(ImuSimParams accSimParams,
       v_eb_n_(v_eb_n),
       w_en_n_(calcTransportAngularVelocity(geoPositionLlh, v_eb_n)),
       dt_(dt),
-      randomNumberGenerator_(seed),
+      seed_(seed < 0 ? std::random_device{}() : static_cast<unsigned int>(seed)),
+      randomNumberGenerator_(seed_),
       normalDistribution_(0, 1),
       uniformDistribution_(0, 1) {
   // Initialize IMU stochastic error structs
@@ -378,9 +379,11 @@ void ImuSimulator::setEnvironmentalParameters(
 
 /**
  * @brief Setter for the IMU seed of the random number generator.
+ * If seed < 0, uses std::random_device for a truly random seed.
 */
-void ImuSimulator::setSimulatorSeed(const int seed) {
-  randomNumberGenerator_.seed(seed);
+void ImuSimulator::setSimulatorSeed(int seed) {
+  seed_ = seed < 0 ? std::random_device{}() : static_cast<unsigned int>(seed);
+  randomNumberGenerator_.seed(seed_);
 }
 
 /**
@@ -538,15 +541,6 @@ void ImuSimulator::setGyroEnableSaturation(const bool enable) {
 */
 void ImuSimulator::setGyroEnableQuantization(const bool enable) {
   imuModelEnableSettings_.gyro.enableQuantization = enable;
-}
-
-/**
- * @brief Setter for the flag indicating if fixed random numbers are used.
- * 
- * @param enable Enable/disable fixed random numbers.
-*/
-void ImuSimulator::setUseFixedRandomNumbersFlag(const bool enable) {
-  useFixedRandomNumbers_ = enable;
 }
 
 /**
@@ -1003,18 +997,9 @@ double ImuSimulator::updateDiscreteTimeEquivalentStateSpaceModel(
   // Discrete-time measurement noise covariance (velocity/angle random walk)
   double Q_N_k = S_N / dt_;
 
-  // Define random number vector
-  Eigen::Vector3d randomNumbers;
-
-  if (useFixedRandomNumbers_ == true) {
-    // Draw fixed random numbers for testing/debugging
-    randomNumbers = Eigen::Vector3d(1.0, 2.0, 3.0);
-  } else {
-    // Draw normal distributed random samples from white noise processes
-    randomNumbers =
-        Eigen::Vector3d(drawRandNormalDistNum(), drawRandNormalDistNum(),
-                        drawRandNormalDistNum());
-  }
+  // Draw normal distributed random samples from white noise processes
+  Eigen::Vector3d randomNumbers(drawRandNormalDistNum(), drawRandNormalDistNum(),
+                                drawRandNormalDistNum());
 
   // Draw measurement noise scalar (velocity/angle random walk)
   Eigen::VectorXd nu_N_k =
@@ -1254,6 +1239,9 @@ void ImuSimulator::resetImuSimulator() {
   pGyroStochasticErrors_->z_N = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_B = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_K = Eigen::Vector3d::Zero();
+
+  // Re-seed RNG to produce the same sequence from the beginning
+  randomNumberGenerator_.seed(seed_);
 
   // Reset flag indicating if IMU constant errors are initialized
   constErrorsInitialized_ = false;

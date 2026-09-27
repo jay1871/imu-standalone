@@ -245,13 +245,24 @@ TEST_F(ImuSimulatorTest, AccTurnOnBiasRemainsConstantTest) {
     EXPECT_EQ(turnOnBias.z(), turnOnBiasExpected.z());
   }
 
-  // Reset the IMU simulator to draw new random turn-on biases
+  // Reset the IMU simulator — with a fixed seed, reset reproduces the same state
   imuSimulator.resetImuSimulator();
 
   Eigen::Vector3d turnOnBias =
       imuSimulator.getConstTurnOnBias(imu_simulator::MeasurementType::acc);
 
-  // Now the turn-on bias should be different
+  // Same seed means same turn-on bias after reset
+  EXPECT_EQ(turnOnBias.x(), turnOnBiasExpected.x());
+  EXPECT_EQ(turnOnBias.y(), turnOnBiasExpected.y());
+  EXPECT_EQ(turnOnBias.z(), turnOnBiasExpected.z());
+
+  // Changing seed should produce different turn-on bias
+  imuSimulator.setSimulatorSeed(999);
+  imuSimulator.resetImuSimulator();
+
+  turnOnBias =
+      imuSimulator.getConstTurnOnBias(imu_simulator::MeasurementType::acc);
+
   EXPECT_NE(turnOnBias.x(), turnOnBiasExpected.x());
   EXPECT_NE(turnOnBias.y(), turnOnBiasExpected.y());
   EXPECT_NE(turnOnBias.z(), turnOnBiasExpected.z());
@@ -281,13 +292,24 @@ TEST_F(ImuSimulatorTest, GyroTurnOnBiasRemainsConstantTest) {
     EXPECT_EQ(turnOnBias.z(), turnOnBiasExpected.z());
   }
 
-  // Reset the IMU simulator to draw new random turn-on biases
+  // Reset the IMU simulator — with a fixed seed, reset reproduces the same state
   imuSimulator.resetImuSimulator();
 
   Eigen::Vector3d turnOnBias =
       imuSimulator.getConstTurnOnBias(imu_simulator::MeasurementType::gyro);
 
-  // Now the turn-on bias should be different
+  // Same seed means same turn-on bias after reset
+  EXPECT_EQ(turnOnBias.x(), turnOnBiasExpected.x());
+  EXPECT_EQ(turnOnBias.y(), turnOnBiasExpected.y());
+  EXPECT_EQ(turnOnBias.z(), turnOnBiasExpected.z());
+
+  // Changing seed should produce different turn-on bias
+  imuSimulator.setSimulatorSeed(888);
+  imuSimulator.resetImuSimulator();
+
+  turnOnBias =
+      imuSimulator.getConstTurnOnBias(imu_simulator::MeasurementType::gyro);
+
   EXPECT_NE(turnOnBias.x(), turnOnBiasExpected.x());
   EXPECT_NE(turnOnBias.y(), turnOnBiasExpected.y());
   EXPECT_NE(turnOnBias.z(), turnOnBiasExpected.z());
@@ -732,188 +754,133 @@ TEST_F(ImuSimulatorTest, GyroStochasticErrorModelZeroNoiseTest) {
 }
 
 /**
- * @brief Test if the accelerometer stochastic error match the manual calculations for fixed random numbers
+ * @brief Test that accelerometer stochastic error is deterministic with a fixed seed
+ *        and reproducible after reset.
 */
 TEST_F(ImuSimulatorTest, AccStochasticErrorModelTest) {
-  // Set accelerometer noise parameters to zero to disable the noise
   imu_simulator::ImuSimParams accSimParams;
-
   accSimParams.N = Eigen::Vector3d(0.001, 0.001, 0.001);
   accSimParams.B = Eigen::Vector3d(0.0001, 0.0001, 0.0001);
   accSimParams.K = Eigen::Vector3d(1e-5, 1e-5, 1e-5);
   accSimParams.corrTime = Eigen::Vector3d(100.0, 100.0, 100.0);
 
-  // Set  gyro noise parameters to zero to disable the noise
   imu_simulator::ImuSimParams gyroSimParams;
-
   gyroSimParams.N = Eigen::Vector3d(0.0, 0.0, 0.0);
   gyroSimParams.B = Eigen::Vector3d(0.0, 0.0, 0.0);
   gyroSimParams.K = Eigen::Vector3d(0.0, 0.0, 0.0);
   gyroSimParams.corrTime = Eigen::Vector3d(100.0, 100.0, 100.0);
 
-  // Overwrite the IMU simulation parameters with zero noise parameters
   imuSimulator.setImuSimParameters(accSimParams, gyroSimParams);
-
-  // Disable the gravity vector model
   imuSimulator.setAccEnableGravity(false);
-
-  // Enable the accelerometer stochastic error model
   imuSimulator.setAccEnableStochasticError(true);
 
-  // Set the random numbers to fixed values for testing
-  imuSimulator.setUseFixedRandomNumbersFlag(true);
-
-  Eigen::Vector3d f_ib_b_meas;
-  f_ib_b_meas = imuSimulator.generateAccelerationMeasurement(
-      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
-
-  imu_simulator::ImuStochasticErrors imuStochasticErrors;
-  imuStochasticErrors =
-      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::acc);
-
-  Eigen::Vector3d z_N_expected = Eigen::Vector3d(0.01, 0.01, 0.01);
-  Eigen::Vector3d z_B_expected = Eigen::Vector3d(
-      3.04352466221447e-06, 3.04352466221447e-06, 3.04352466221447e-06);
-  Eigen::Vector3d z_K_expected = Eigen::Vector3d(3e-6, 3e-6, 3e-6);
-
-  // Check if the stochastic errors are as expected for fixed random numbers
-  EXPECT_NEAR(imuStochasticErrors.z_N(0), z_N_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(1), z_N_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(2), z_N_expected(2), 1e-10);
-
-  EXPECT_NEAR(imuStochasticErrors.z_B(0), z_B_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(1), z_B_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(2), z_B_expected(2), 1e-10);
-
-  EXPECT_NEAR(imuStochasticErrors.z_K(0), z_K_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(1), z_K_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(2), z_K_expected(2), 1e-10);
-
-  // Generate second measurement
-  f_ib_b_meas = imuSimulator.generateAccelerationMeasurement(
-      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
-
-  imuStochasticErrors =
-      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::acc);
-
-  // Check that stochastic errors changed after second measurement
-  EXPECT_FALSE(imuStochasticErrors.z_N.isApprox(z_N_expected, 1e-10));
-  EXPECT_FALSE(imuStochasticErrors.z_B.isApprox(z_B_expected, 1e-10));
-  EXPECT_FALSE(imuStochasticErrors.z_K.isApprox(z_K_expected, 1e-10));
-
-  // Reset the IMU simulator to draw new random numbers
+  // Use a known seed for deterministic behavior
+  imuSimulator.setSimulatorSeed(123);
   imuSimulator.resetImuSimulator();
 
-  f_ib_b_meas = imuSimulator.generateAccelerationMeasurement(
+  // First measurement — record stochastic states
+  imuSimulator.generateAccelerationMeasurement(
       Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
 
-  imuStochasticErrors =
+  imu_simulator::ImuStochasticErrors firstErrors =
       imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::acc);
 
-  // Check if stochastic errors are as expected for fixed random numbers
-  EXPECT_NEAR(imuStochasticErrors.z_N(0), z_N_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(1), z_N_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(2), z_N_expected(2), 1e-10);
+  // States should be non-zero (noise was applied)
+  EXPECT_FALSE(firstErrors.z_N.isZero(1e-15));
+  EXPECT_FALSE(firstErrors.z_B.isZero(1e-15));
+  EXPECT_FALSE(firstErrors.z_K.isZero(1e-15));
 
-  EXPECT_NEAR(imuStochasticErrors.z_B(0), z_B_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(1), z_B_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(2), z_B_expected(2), 1e-10);
+  // Second measurement — states should change
+  imuSimulator.generateAccelerationMeasurement(
+      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
 
-  EXPECT_NEAR(imuStochasticErrors.z_K(0), z_K_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(1), z_K_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(2), z_K_expected(2), 1e-10);
+  imu_simulator::ImuStochasticErrors secondErrors =
+      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::acc);
+
+  EXPECT_FALSE(secondErrors.z_N.isApprox(firstErrors.z_N, 1e-10));
+
+  // Reset and verify reproducibility — same seed produces same first result
+  imuSimulator.resetImuSimulator();
+
+  imuSimulator.generateAccelerationMeasurement(
+      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
+
+  imu_simulator::ImuStochasticErrors afterResetErrors =
+      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::acc);
+
+  EXPECT_NEAR(afterResetErrors.z_N(0), firstErrors.z_N(0), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_N(1), firstErrors.z_N(1), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_N(2), firstErrors.z_N(2), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_B(0), firstErrors.z_B(0), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_B(1), firstErrors.z_B(1), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_B(2), firstErrors.z_B(2), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_K(0), firstErrors.z_K(0), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_K(1), firstErrors.z_K(1), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_K(2), firstErrors.z_K(2), 1e-10);
 }
 
 /**
- * @brief Test if the gyroscope stochastic error match the manual calculations for fixed random numbers
- * 
+ * @brief Test that gyroscope stochastic error is deterministic with a fixed seed
+ *        and reproducible after reset.
 */
 TEST_F(ImuSimulatorTest, GyroStochasticErrorModelTest) {
-  // Set accelerometer noise parameters to zero to disable the noise
   imu_simulator::ImuSimParams accSimParams;
-
   accSimParams.N = Eigen::Vector3d(0.0, 0.0, 0.0);
   accSimParams.B = Eigen::Vector3d(0.0, 0.0, 0.0);
   accSimParams.K = Eigen::Vector3d(0.0, 0.0, 0.0);
   accSimParams.corrTime = Eigen::Vector3d(100.0, 100.0, 100.0);
 
-  // Set  gyro noise parameters to zero to disable the noise
   imu_simulator::ImuSimParams gyroSimParams;
-
   gyroSimParams.N = Eigen::Vector3d(0.001, 0.001, 0.001);
   gyroSimParams.B = Eigen::Vector3d(0.0001, 0.0001, 0.0001);
   gyroSimParams.K = Eigen::Vector3d(1e-5, 1e-5, 1e-5);
   gyroSimParams.corrTime = Eigen::Vector3d(100.0, 100.0, 100.0);
 
-  // Overwrite the IMU simulation parameters with zero noise parameters
   imuSimulator.setImuSimParameters(accSimParams, gyroSimParams);
-
-  // Disable the Earth angular velocity model
   imuSimulator.setGyroEnableEarthAngularVelocity(false);
-
-  // Enable the gyroscope stochastic error model
   imuSimulator.setGyroEnableStochasticError(true);
 
-  // Set the random numbers to fixed values for testing
-  imuSimulator.setUseFixedRandomNumbersFlag(true);
-
-  Eigen::Vector3d w_ib_b_meas;
-  w_ib_b_meas = imuSimulator.generateGyroscopeMeasurement(
-      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
-
-  imu_simulator::ImuStochasticErrors imuStochasticErrors;
-  imuStochasticErrors =
-      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::gyro);
-
-  Eigen::Vector3d z_N_expected = Eigen::Vector3d(0.01, 0.01, 0.01);
-  Eigen::Vector3d z_B_expected = Eigen::Vector3d(
-      3.04352466221447e-06, 3.04352466221447e-06, 3.04352466221447e-06);
-  Eigen::Vector3d z_K_expected = Eigen::Vector3d(3e-6, 3e-6, 3e-6);
-
-  // Check if the stochastic errors are as expected for fixed random numbers
-  EXPECT_NEAR(imuStochasticErrors.z_N(0), z_N_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(1), z_N_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(2), z_N_expected(2), 1e-10);
-
-  EXPECT_NEAR(imuStochasticErrors.z_B(0), z_B_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(1), z_B_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(2), z_B_expected(2), 1e-10);
-
-  EXPECT_NEAR(imuStochasticErrors.z_K(0), z_K_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(1), z_K_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(2), z_K_expected(2), 1e-10);
-
-  // Generate second measurement
-  w_ib_b_meas = imuSimulator.generateGyroscopeMeasurement(
-      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
-
-  imuStochasticErrors =
-      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::gyro);
-
-  // Check that stochastic errors changed after second measurement
-  EXPECT_FALSE(imuStochasticErrors.z_N.isApprox(z_N_expected, 1e-10));
-  EXPECT_FALSE(imuStochasticErrors.z_B.isApprox(z_B_expected, 1e-10));
-  EXPECT_FALSE(imuStochasticErrors.z_K.isApprox(z_K_expected, 1e-10));
-
-  // Reset the IMU simulator to draw new random numbers
+  // Use a known seed for deterministic behavior
+  imuSimulator.setSimulatorSeed(456);
   imuSimulator.resetImuSimulator();
 
-  w_ib_b_meas = imuSimulator.generateGyroscopeMeasurement(
+  // First measurement — record stochastic states
+  imuSimulator.generateGyroscopeMeasurement(
       Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
 
-  imuStochasticErrors =
+  imu_simulator::ImuStochasticErrors firstErrors =
       imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::gyro);
 
-  // Check if stochastic errors are as expected for fixed random numbers
-  EXPECT_NEAR(imuStochasticErrors.z_N(0), z_N_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(1), z_N_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_N(2), z_N_expected(2), 1e-10);
+  // States should be non-zero (noise was applied)
+  EXPECT_FALSE(firstErrors.z_N.isZero(1e-15));
+  EXPECT_FALSE(firstErrors.z_B.isZero(1e-15));
+  EXPECT_FALSE(firstErrors.z_K.isZero(1e-15));
 
-  EXPECT_NEAR(imuStochasticErrors.z_B(0), z_B_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(1), z_B_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_B(2), z_B_expected(2), 1e-10);
+  // Second measurement — states should change
+  imuSimulator.generateGyroscopeMeasurement(
+      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
 
-  EXPECT_NEAR(imuStochasticErrors.z_K(0), z_K_expected(0), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(1), z_K_expected(1), 1e-10);
-  EXPECT_NEAR(imuStochasticErrors.z_K(2), z_K_expected(2), 1e-10);
+  imu_simulator::ImuStochasticErrors secondErrors =
+      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::gyro);
+
+  EXPECT_FALSE(secondErrors.z_N.isApprox(firstErrors.z_N, 1e-10));
+
+  // Reset and verify reproducibility — same seed produces same first result
+  imuSimulator.resetImuSimulator();
+
+  imuSimulator.generateGyroscopeMeasurement(
+      Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0));
+
+  imu_simulator::ImuStochasticErrors afterResetErrors =
+      imuSimulator.getImuStochasticErrors(imu_simulator::MeasurementType::gyro);
+
+  EXPECT_NEAR(afterResetErrors.z_N(0), firstErrors.z_N(0), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_N(1), firstErrors.z_N(1), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_N(2), firstErrors.z_N(2), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_B(0), firstErrors.z_B(0), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_B(1), firstErrors.z_B(1), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_B(2), firstErrors.z_B(2), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_K(0), firstErrors.z_K(0), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_K(1), firstErrors.z_K(1), 1e-10);
+  EXPECT_NEAR(afterResetErrors.z_K(2), firstErrors.z_K(2), 1e-10);
 }

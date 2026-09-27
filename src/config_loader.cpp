@@ -75,8 +75,7 @@ SimulatorConfig loadConfig(const std::string& yamlPath) {
   // General settings
   auto general = imu["general_settings"];
   config.sampleTime = general["sample_time"].as<double>();
-  config.seed = general["seed"].as<unsigned int>();
-  config.useConstantSeed = general["use_constant_seed"].as<bool>();
+  config.seed = general["seed"].as<int>();
 
   // Model parameters
   auto params = imu["model_parameter_settings"];
@@ -104,8 +103,6 @@ ImuSimulator createSimulatorFromConfig(const std::string& yamlPath) {
   ImuSimulator sim(config.accSimParams, config.gyroSimParams,
                    config.enableSettings, config.geoPositionLlh,
                    config.geoVelocityNed, config.sampleTime, config.seed);
-
-  sim.setUseFixedRandomNumbersFlag(config.useConstantSeed);
 
   return sim;
 }

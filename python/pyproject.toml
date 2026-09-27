@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imu-nbk"
+version = "0.1.0"
+description = "Multi-backend NBK stochastic IMU error model (NumPy/JAX/Warp)"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+    "pyyaml>=5.0",
+]
+
+[project.optional-dependencies]
+mujoco = ["mujoco>=3.11.0"]
+jax-cpu = ["jax[cpu]"]
+jax-cuda = ["jax[cuda12]"]
+jax-rocm = ["jax-rocm7"]
+warp = ["warp-lang>=1.0"]
+test = [
+    "pytest>=7.0",
+    "allantools>=2019.9",
+    "matplotlib>=3.5",
+    "mujoco>=3.11.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["imu_nbk*"]

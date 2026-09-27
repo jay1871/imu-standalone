@@ -22,7 +22,7 @@ class ImuSimulator {
       ImuModelEnableSettings imuModelEnableSettings = ImuModelEnableSettings(),
       Eigen::Vector3d geoPositionLlh = Eigen::Vector3d::Zero(),
       Eigen::Vector3d v_eb_n = Eigen::Vector3d::Zero(), double dt = 0.01,
-      unsigned int seed = 42);
+      int seed = 42);
 
   // Destructor
   ~ImuSimulator();
@@ -58,7 +58,7 @@ class ImuSimulator {
   void setEnvironmentalParameters(
       const EnvironmentalParameters& environmentalParameters);
 
-  void setSimulatorSeed(const int seed);
+  void setSimulatorSeed(int seed);
   void setImuSampleTime(const double dt);
 
   void setImuGeoPositionLlh(const Eigen::Vector3d geoPositionLlh);
@@ -82,8 +82,6 @@ class ImuSimulator {
   void setGyroEnableStochasticError(const bool enable);
   void setGyroEnableSaturation(const bool enable);
   void setGyroEnableQuantization(const bool enable);
-
-  void setUseFixedRandomNumbersFlag(const bool enable);
 
   // Print functions
   std::stringstream printImuSimulatorParameters();
@@ -130,12 +128,10 @@ class ImuSimulator {
   double dt_;
 
   // Random number generator for normal distribution and uniform distribution
+  unsigned int seed_;
   std::mt19937 randomNumberGenerator_;
   std::normal_distribution<> normalDistribution_;
   std::uniform_real_distribution<> uniformDistribution_;
-
-  // Flag indicating if fixed random numbers are be used (for testing/debugging)
-  bool useFixedRandomNumbers_;
 
   Eigen::Vector3d calcAccelerometerGravityModel(
       const Eigen::Vector3d& a_ib_b, const Eigen::Quaterniond& q_b_n_true);
