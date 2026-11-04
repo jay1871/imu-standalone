@@ -58,6 +58,69 @@ ImuSimulator::ImuSimulator(ImuSimParams accSimParams,
 */
 ImuSimulator::~ImuSimulator() {}
 
+ImuSimulator::ImuSimulator(const ImuSimulator& other)
+    : accSimParams_(other.accSimParams_),
+      gyroSimParams_(other.gyroSimParams_),
+      pAccStochasticErrors_(std::make_shared<ImuStochasticErrors>(
+          other.pAccStochasticErrors_ ? *other.pAccStochasticErrors_
+                                      : ImuStochasticErrors())),
+      pGyroStochasticErrors_(std::make_shared<ImuStochasticErrors>(
+          other.pGyroStochasticErrors_ ? *other.pGyroStochasticErrors_
+                                       : ImuStochasticErrors())),
+      accConstTurnOnBias_(other.accConstTurnOnBias_),
+      accConstScaleFactor_(other.accConstScaleFactor_),
+      accConstNonOrthogonality_(other.accConstNonOrthogonality_),
+      accConstMisAlignment_(other.accConstMisAlignment_),
+      gyroConstTurnOnBias_(other.gyroConstTurnOnBias_),
+      gyroConstScaleFactor_(other.gyroConstScaleFactor_),
+      gyroConstNonOrthogonality_(other.gyroConstNonOrthogonality_),
+      gyroConstMisAlignment_(other.gyroConstMisAlignment_),
+      imuModelEnableSettings_(other.imuModelEnableSettings_),
+      constErrorsInitialized_(other.constErrorsInitialized_),
+      environmentalParameters_(other.environmentalParameters_),
+      geoPositionLlh_(other.geoPositionLlh_),
+      v_eb_n_(other.v_eb_n_),
+      w_en_n_(other.w_en_n_),
+      dt_(other.dt_),
+      seed_(other.seed_),
+      randomNumberGenerator_(other.randomNumberGenerator_),
+      normalDistribution_(other.normalDistribution_),
+      uniformDistribution_(other.uniformDistribution_) {}
+
+ImuSimulator& ImuSimulator::operator=(const ImuSimulator& other) {
+  if (this == &other) {
+    return *this;
+  }
+  accSimParams_ = other.accSimParams_;
+  gyroSimParams_ = other.gyroSimParams_;
+  pAccStochasticErrors_ = std::make_shared<ImuStochasticErrors>(
+      other.pAccStochasticErrors_ ? *other.pAccStochasticErrors_
+                                  : ImuStochasticErrors());
+  pGyroStochasticErrors_ = std::make_shared<ImuStochasticErrors>(
+      other.pGyroStochasticErrors_ ? *other.pGyroStochasticErrors_
+                                   : ImuStochasticErrors());
+  accConstTurnOnBias_ = other.accConstTurnOnBias_;
+  accConstScaleFactor_ = other.accConstScaleFactor_;
+  accConstNonOrthogonality_ = other.accConstNonOrthogonality_;
+  accConstMisAlignment_ = other.accConstMisAlignment_;
+  gyroConstTurnOnBias_ = other.gyroConstTurnOnBias_;
+  gyroConstScaleFactor_ = other.gyroConstScaleFactor_;
+  gyroConstNonOrthogonality_ = other.gyroConstNonOrthogonality_;
+  gyroConstMisAlignment_ = other.gyroConstMisAlignment_;
+  imuModelEnableSettings_ = other.imuModelEnableSettings_;
+  constErrorsInitialized_ = other.constErrorsInitialized_;
+  environmentalParameters_ = other.environmentalParameters_;
+  geoPositionLlh_ = other.geoPositionLlh_;
+  v_eb_n_ = other.v_eb_n_;
+  w_en_n_ = other.w_en_n_;
+  dt_ = other.dt_;
+  seed_ = other.seed_;
+  randomNumberGenerator_ = other.randomNumberGenerator_;
+  normalDistribution_ = other.normalDistribution_;
+  uniformDistribution_ = other.uniformDistribution_;
+  return *this;
+}
+
 /**
  * @brief Getter for the IMU simulation parameters.
  * 
@@ -968,34 +1031,38 @@ double ImuSimulator::updateDiscreteTimeEquivalentStateSpaceModel(
     std::shared_ptr<ImuStochasticErrors> pImuStochasticErrors, const double N,
     const double B, const double K, const double corrTime,
     const AxisIdentifier axisId) {
+  const double safeCorrTime = (corrTime > 0.0) ? corrTime : 100.0;
+  const double safeDt = (dt_ > 0.0) ? dt_ : 0.001;
+
   // PSD velocity/angle random walk
   double S_N = N * N;
 
   // PSD bias instability
-  double S_B = (2 * B * B * std::log(2)) / (M_PI * 0.4365 * 0.4365 * corrTime);
+  double S_B =
+      (2 * B * B * std::log(2)) / (M_PI * 0.4365 * 0.4365 * safeCorrTime);
 
   // PSD accel./rate random walk
   double S_K = K * K;
 
   // Gauss-Markov time correlation constant
-  double corrConstant = 1 / corrTime;
+  double corrConstant = 1.0 / safeCorrTime;
 
   // Discrete-time state-space model matrices
   Eigen::Matrix2d Phi_k;
-  Phi_k << std::exp(-corrConstant * dt_), 0, 0, 1;
+  Phi_k << std::exp(-corrConstant * safeDt), 0, 0, 1;
 
   Eigen::MatrixXd H(1, 2);
   H << 1, 1;
 
   // Discrete-time bias instability covariance
   double Q_B_k =
-      S_B / (2 * corrConstant) * (1 - std::exp(-2 * corrConstant * dt_));
+      S_B / (2 * corrConstant) * (1 - std::exp(-2 * corrConstant * safeDt));
 
   // Discrete-time rate random walk covariance
-  double Q_K_k = S_K * dt_;
+  double Q_K_k = S_K * safeDt;
 
   // Discrete-time measurement noise covariance (velocity/angle random walk)
-  double Q_N_k = S_N / dt_;
+  double Q_N_k = S_N / safeDt;
 
   // Draw normal distributed random samples from white noise processes
   Eigen::Vector3d randomNumbers(drawRandNormalDistNum(), drawRandNormalDistNum(),
@@ -1216,13 +1283,15 @@ Eigen::Vector3d ImuSimulator::calcQuantizationModel(
   // Quantized measurement vector
   Eigen::Vector3d quantizedMeasurement;
 
-  // Quantize elements of measurement to resolution
-  quantizedMeasurement(0) =
-      std::round(measurement(0) / resolution(0)) * resolution(0);
-  quantizedMeasurement(1) =
-      std::round(measurement(1) / resolution(1)) * resolution(1);
-  quantizedMeasurement(2) =
-      std::round(measurement(2) / resolution(2)) * resolution(2);
+  // Quantize elements of measurement to resolution (guard against zero resolution)
+  for (int i = 0; i < 3; i++) {
+    if (resolution(i) > 0.0) {
+      quantizedMeasurement(i) =
+          std::round(measurement(i) / resolution(i)) * resolution(i);
+    } else {
+      quantizedMeasurement(i) = measurement(i);
+    }
+  }
 
   return quantizedMeasurement;
 }

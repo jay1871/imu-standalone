@@ -16,10 +16,10 @@ struct SimulatorConfig {
   ImuSimParams accSimParams;
   ImuSimParams gyroSimParams;
   ImuModelEnableSettings enableSettings;
-  double sampleTime;
-  int seed;
-  Eigen::Vector3d geoPositionLlh;
-  Eigen::Vector3d geoVelocityNed;
+  double sampleTime = 0.001;
+  int seed = 42;
+  Eigen::Vector3d geoPositionLlh = Eigen::Vector3d::Zero();
+  Eigen::Vector3d geoVelocityNed = Eigen::Vector3d::Zero();
 };
 
 SimulatorConfig loadConfig(const std::string& yamlPath);

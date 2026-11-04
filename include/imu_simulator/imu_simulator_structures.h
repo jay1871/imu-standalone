@@ -8,36 +8,47 @@ All rights reserved.
 
 #include <Eigen/Dense>
 
+// Uncomment the #define below (or configure CMake with -DENABLE_DUT_PARAMETER_SPREAD=ON)
+// to enable multi-DUT part-to-part parameter spread (N_std, B_std, K_std, correlation_time_std)
+// derived from real-world hardware characterization measurements.
+// #define ENABLE_DUT_PARAMETER_SPREAD
+
 namespace imu_simulator {
 
 struct ImuStochasticErrors {
-  Eigen::Vector3d z_N;  // Velocity/angular random walk
-  Eigen::Vector3d z_B;  // Bias instability
-  Eigen::Vector3d z_K;  // Accel./rate random walk
+  Eigen::Vector3d z_N = Eigen::Vector3d::Zero();  // Velocity/angular random walk
+  Eigen::Vector3d z_B = Eigen::Vector3d::Zero();  // Bias instability
+  Eigen::Vector3d z_K = Eigen::Vector3d::Zero();  // Accel./rate random walk
 };
 
 struct ImuSimParams {
-  Eigen::Vector3d N;  // Vel./ang. random walk (m/s^(3/2))/(rad/s^(1/2))
-  Eigen::Vector3d B;  // Bias instability (m/s^2)/(rad/s)
-  Eigen::Vector3d K;  // Accel./rate random walk (m/s^(5/2)))/(rad/s^(3/2)))
-  Eigen::Vector3d corrTime;            // Correlation time (s)
-  Eigen::Vector3d intervalTurnOnBias;  // Interval turn-on bias (m/s^2)/(rad/s)
-  Eigen::Vector3d measRange;           // Measurement range (m/s^2)/(rad/s)
-  Eigen::Vector3d intervalMisAlignment;  // Interval misalignment (mrad)
-  Eigen::Matrix<double, 6, 1>
-      intervalNonOrthogonality;  // Interval nonOrthogonality (mrad) //NOLINT
-  Eigen::Vector3d intervalScaleFactor;  // Interval scale factor (%)
-  Eigen::Vector3d resolution;  // Measurement resolution (m/s^2/LSB)/(rad/s/LSB)
+  Eigen::Vector3d N = Eigen::Vector3d::Zero();  // Vel./ang. random walk (m/s^(3/2))/(rad/s^(1/2))
+  Eigen::Vector3d B = Eigen::Vector3d::Zero();  // Bias instability (m/s^2)/(rad/s)
+  Eigen::Vector3d K = Eigen::Vector3d::Zero();  // Accel./rate random walk (m/s^(5/2)))/(rad/s^(3/2)))
+  Eigen::Vector3d corrTime = Eigen::Vector3d::Constant(100.0);  // Correlation time (s)
+#ifdef ENABLE_DUT_PARAMETER_SPREAD
+  Eigen::Vector3d N_std = Eigen::Vector3d::Zero();         // Optional DUT-to-DUT 1-sigma spread for N
+  Eigen::Vector3d B_std = Eigen::Vector3d::Zero();         // Optional DUT-to-DUT 1-sigma spread for B
+  Eigen::Vector3d K_std = Eigen::Vector3d::Zero();         // Optional DUT-to-DUT 1-sigma spread for K
+  Eigen::Vector3d corrTime_std = Eigen::Vector3d::Zero();  // Optional DUT-to-DUT 1-sigma spread for corrTime
+#endif
+  Eigen::Vector3d intervalTurnOnBias = Eigen::Vector3d::Zero();  // Interval turn-on bias (m/s^2)/(rad/s)
+  Eigen::Vector3d measRange = Eigen::Vector3d::Zero();           // Measurement range (m/s^2)/(rad/s)
+  Eigen::Vector3d intervalMisAlignment = Eigen::Vector3d::Zero();  // Interval misalignment (mrad)
+  Eigen::Matrix<double, 6, 1> intervalNonOrthogonality =
+      Eigen::Matrix<double, 6, 1>::Zero();  // Interval nonOrthogonality (mrad) //NOLINT
+  Eigen::Vector3d intervalScaleFactor = Eigen::Vector3d::Zero();  // Interval scale factor (%)
+  Eigen::Vector3d resolution = Eigen::Vector3d::Zero();  // Measurement resolution (m/s^2/LSB)/(rad/s/LSB)
 };
 
 struct ModelEnableSettings {
-  bool enableLocalRefVec;   // on/off gravity (acc)/ Earth angular vel. (gyro)
-  bool enableTurnOnBias;    // on/off constant turn-on bias given an interval
-  bool enableScaling;       // on/off scaling
-  bool enableMisAlignment;  // on/off misalignment
-  bool enableStochasticError;  // on/off colored noise (stochastic error)
-  bool enableSaturation;       // on/off saturation given a measurement range
-  bool enableQuantization;     // on/off quantization given a resolution
+  bool enableLocalRefVec = false;      // on/off gravity (acc)/ Earth angular vel. (gyro)
+  bool enableTurnOnBias = false;       // on/off constant turn-on bias given an interval
+  bool enableScaling = false;          // on/off scaling
+  bool enableMisAlignment = false;     // on/off misalignment
+  bool enableStochasticError = false;  // on/off colored noise (stochastic error)
+  bool enableSaturation = false;       // on/off saturation given a measurement range
+  bool enableQuantization = false;     // on/off quantization given a resolution
 };
 
 struct ImuModelEnableSettings {
@@ -46,8 +57,8 @@ struct ImuModelEnableSettings {
 };
 
 struct EnvironmentalParameters {
-  Eigen::Vector3d g_n;     // Local gravity vector (m/s²)
-  Eigen::Vector3d w_ie_n;  // Local angular velocity of Earth (rad/s)
+  Eigen::Vector3d g_n = Eigen::Vector3d::Zero();     // Local gravity vector (m/s²)
+  Eigen::Vector3d w_ie_n = Eigen::Vector3d::Zero();  // Local angular velocity of Earth (rad/s)
 };
 
 // Identifier for measurement axis XYZ

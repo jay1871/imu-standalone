@@ -21,7 +21,7 @@ def compute_theoretical_adev(tau, N, B, K, corr_time):
     beta = 1.0 / corr_time
     S_B = (2.0 * B**2 * np.log(2.0)) / (np.pi * 0.4365**2 * corr_time)
     x = beta * tau
-    sigma2_B = (S_B / (2.0 * beta)) * (
+    sigma2_B = (S_B / (beta * x)) * (
         1.0 - (1.0 / (2.0 * x)) * (3.0 - 4.0 * np.exp(-x) + np.exp(-2.0 * x)))
     sigma2_N = N**2 / tau
     sigma2_K = K**2 * tau / 3.0

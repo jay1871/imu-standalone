@@ -129,6 +129,7 @@ cmake --build . -j$(nproc)
 | `BUILD_APPS` | ON | Build allan_validation executable |
 | `BUILD_SHARED_LIBS` | OFF | Static libs (recommended for plugin linking) |
 | `IMU_BUILD_MUJOCO_PLUGIN` | OFF | Build MuJoCo C sensor plugin |
+| `ENABLE_DUT_PARAMETER_SPREAD` | OFF | Enable optional multi-DUT part-to-part parameter spread (`*_std` fields in YAML) derived from real-world hardware measurements |
 
 ### Python Package (imu_nbk)
 
@@ -410,7 +411,7 @@ python drift_analysis.py --duration 10 --save drift_10hr.csv --no-plot
 
 The `allan_validation` tool runs a stationary IMU simulation and computes overlapping Allan
 deviation **in-memory** — no multi-GB CSV files. It outputs a compact ADEV results file
-(~2 KB) with one row per tau point.
+(~2–5 KB) with one row per tau point.
 
 ```bash
 cd imu-standalone/build
@@ -418,36 +419,49 @@ cd imu-standalone/build
 # Single seed, 10 hours at 1 kHz (~30s on CPU, ~1.7 GB RAM during run)
 ./allan_validation ../config/adis16607.yaml adev.csv 10 1000
 
-# Plot results with datasheet reference markers
+# Plot results (2-panel: Accelerometer + Gyroscope)
 python3 ../scripts/allan_variance.py adev.csv ../config/adis16607.yaml --rate 1000
 ```
 
-**Multi-seed** (mean ± σ envelope, matches datasheet methodology):
+**Multi-seed** (mean + σ across independent realizations; use 14–16 hours to resolve $\tau = 10^4\text{ s}$):
 
 ```bash
-# 100 seeds, 10 hours each (~50 min total on CPU)
-./allan_validation ../config/adis16607.yaml adev_100seeds.csv 10 1000 100
+# 33 seeds, 16 hours each
+./allan_validation ../config/adis16607.yaml adev_33seeds.csv 16 1000 33
 
-# Plot shows shaded ±σ bands + datasheet markers
-python3 ../scripts/allan_variance.py adev_100seeds.csv ../config/adis16607.yaml --rate 1000
+# Combined 2-panel plot (Accelerometer + Gyroscope)
+python3 ../scripts/allan_variance.py adev_33seeds.csv ../config/adis16607.yaml --rate 1000
+
+# Single-panel plots (Accelerometer-only or Gyroscope-only)
+python3 ../scripts/allan_variance.py adev_33seeds.csv ../config/adis16607.yaml --xl-only --output xl_adev.png
+python3 ../scripts/allan_variance.py adev_33seeds.csv ../config/adis16607.yaml --gyro-only --output gyro_adev.png
+
+# Overlay theoretical NBK curve from YAML (hidden by default to reduce clutter)
+python3 ../scripts/allan_variance.py adev_33seeds.csv ../config/adis16607.yaml --show-theory
+
+# Optional: overlay real-world hardware measurement CSVs for direct comparison
+python3 ../scripts/allan_variance.py adev_33seeds.csv ../config/adis16607.yaml --measured-dir /path/to/testdata
 ```
 
-**Arguments:** `<config.yaml> [output.csv] [duration_hours] [sample_rate_hz] [num_seeds]`
+**Arguments (`allan_validation`):** `<config.yaml> [output.csv] [duration_hours] [sample_rate_hz] [num_seeds]`
 
 | Argument | Default | Description |
 |----------|---------|-------------|
 | config.yaml | (required) | IMU parameter config |
 | output.csv | `allan_adev.csv` | Output ADEV results |
-| duration_hours | 10 | Simulation duration per seed |
+| duration_hours | 10 | Simulation duration per seed (use ≥ 14–16 hrs for full octave coverage above $\tau = 10^4\text{ s}$) |
 | sample_rate_hz | config value | Overrides config `sample_time` |
 | num_seeds | 1 | Number of independent runs (seeds: config.seed, +1, +2, ...) |
 
+**Optional Part-to-Part (DUT-to-DUT) Parameter Spread (`ENABLE_DUT_PARAMETER_SPREAD`):**
+- By default, all seeds in a multi-seed run simulate the nominal `N`, `B`, `K`, and `correlation_time` parameters from `config/adis16607.yaml`.
+- To model physical part-to-part variation across a population of sensors (using optional `N_std`, `B_std`, `K_std`, and `correlation_time_std` fields in `config/adis16607.yaml` fitted from real-world hardware measurements), compile with `-DENABLE_DUT_PARAMETER_SPREAD=ON` (or uncomment `#define ENABLE_DUT_PARAMETER_SPREAD` in `include/imu_simulator/imu_simulator_structures.h`).
+
 **Notes:**
-- All computation runs on CPU (C++, Eigen3, std::mt19937). No GPU required.
-- Multi-seed runs use sequential deterministic seeds (config.seed + 0, +1, +2, ...) for reproducibility.
+- All computation runs on CPU (C++, Eigen3, `std::mt19937`) using 80-bit `long double` phase integration to prevent floating-point precision loss over multi-hour runs. No GPU required.
+- Multi-seed runs use sequential deterministic seeds (`config.seed + 0, +1, +2, ...`) for reproducibility.
 - The first seed in a multi-seed run matches a single-seed run — results are reproducible.
-- RAM usage: ~1.7 GB per 10-hour run at 1 kHz (time series held in memory during ADEV computation, then freed).
-- To resolve the gyro bias instability minimum (corrTime = 1500–2000s), runs of ≥ 5 hours are recommended.
+- Maximum evaluated integration time is $\tau_{\max} = T_{\text{sim}} / 3$. For $\tau = 10^4\text{ s}$, a duration of 10–16 hours is recommended.
 
 **Output format:**
 
@@ -614,15 +628,11 @@ All read the same `config/adis16607.yaml`. No math duplication — every backend
 
 ## ADIS16607 Configuration
 
-Parameters in `config/adis16607.yaml` are converted to SI units from the ADIS16607 datasheet Table 1. Parameters not available from the datasheet are marked with `ESTIMATE` comments — update these after running Allan variance characterization on real hardware:
-
-```bash
-grep "ESTIMATE" config/adis16607.yaml
-```
-
-These are:
-- **K** (rate/acceleration random walk) — determines long-tau slope (+1/2)
-- **correlation_time** — Gauss-Markov time constant, affects bias instability plateau location
+Parameters in `config/adis16607.yaml` are stored in SI units and calibrated against real-world ADIS16607-2 Allan variance hardware characterization measurements (47 accelerometer DUTs and 33 gyroscope DUTs over $\tau \in [0.5, 10^4]\text{ s}$) as well as datasheet specifications:
+- **N** (velocity/angular random walk) — determines short-$\tau$ slope ($-1/2$)
+- **B** (bias instability) and **correlation_time** — Gauss-Markov bias instability magnitude and time constant governing the mid-$\tau$ bowl
+- **K** (acceleration/rate random walk) — determines long-$\tau$ slope ($+1/2$)
+- **N_std, B_std, K_std, correlation_time_std** (optional, commented by default) — 1-$\sigma$ part-to-part variation across physical DUTs, used when compiled with `ENABLE_DUT_PARAMETER_SPREAD`
 
 ### Random Seed
 

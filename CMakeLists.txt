@@ -9,6 +9,11 @@ option(BUILD_TESTS "Build unit tests" ON)
 option(BUILD_APPS "Build application executables" ON)
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(IMU_BUILD_MUJOCO_PLUGIN "Build MuJoCo C sensor plugin (requires mujoco)" OFF)
+option(ENABLE_DUT_PARAMETER_SPREAD "Enable multi-DUT part-to-part parameter spread (*_std fields) from real-world measurements" OFF)
+
+if(ENABLE_DUT_PARAMETER_SPREAD)
+  add_compile_definitions(ENABLE_DUT_PARAMETER_SPREAD)
+endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)

@@ -15,10 +15,15 @@ namespace imu_nbk_plugin {
 namespace {
 
 int SensorSiteId(const mjModel* m, int instance) {
+  if (!m) return -1;
   for (int i = 0; i < m->nsensor; i++) {
     if (m->sensor_type[i] == mjSENS_PLUGIN &&
-        m->sensor_plugin[i] == instance) {
-      return m->sensor_objid[i];
+        m->sensor_plugin[i] == instance &&
+        m->sensor_objtype[i] == mjOBJ_SITE) {
+      int site_id = m->sensor_objid[i];
+      if (site_id >= 0 && site_id < m->nsite) {
+        return site_id;
+      }
     }
   }
   return -1;
@@ -82,6 +87,10 @@ void ImuNbkSensor::Reset(const mjModel* m, int instance) {
 }
 
 void ImuNbkSensor::Compute(const mjModel* m, mjData* d, int instance) {
+  if (!m || !d || !sim_ || site_id_ < 0 || site_id_ >= m->nsite) {
+    return;
+  }
+
   // Strategy: Read the true specific force and angular velocity from MuJoCo's
   // built-in accelerometer and gyro sensors (defined before this plugin sensor
   // in the XML, so already computed). These give the physically correct values
@@ -95,14 +104,15 @@ void ImuNbkSensor::Compute(const mjModel* m, mjData* d, int instance) {
 
   for (int i = 0; i < m->nsensor; i++) {
     if (m->sensor_objid[i] == site_id_) {
-      if (m->sensor_type[i] == mjSENS_ACCELEROMETER) {
-        int adr = m->sensor_adr[i];
+      int adr = m->sensor_adr[i];
+      if (m->sensor_type[i] == mjSENS_ACCELEROMETER &&
+          adr >= 0 && adr + 3 <= m->nsensordata) {
         true_acc = Eigen::Vector3d(d->sensordata[adr],
                                    d->sensordata[adr + 1],
                                    d->sensordata[adr + 2]);
         found_acc = true;
-      } else if (m->sensor_type[i] == mjSENS_GYRO) {
-        int adr = m->sensor_adr[i];
+      } else if (m->sensor_type[i] == mjSENS_GYRO &&
+                 adr >= 0 && adr + 3 <= m->nsensordata) {
         true_gyro = Eigen::Vector3d(d->sensordata[adr],
                                     d->sensordata[adr + 1],
                                     d->sensordata[adr + 2]);
@@ -136,12 +146,14 @@ void ImuNbkSensor::Compute(const mjModel* m, mjData* d, int instance) {
     if (m->sensor_type[i] == mjSENS_PLUGIN &&
         m->sensor_plugin[i] == instance) {
       int adr = m->sensor_adr[i];
-      d->sensordata[adr + 0] = acc_meas(0);
-      d->sensordata[adr + 1] = acc_meas(1);
-      d->sensordata[adr + 2] = acc_meas(2);
-      d->sensordata[adr + 3] = gyro_meas(0);
-      d->sensordata[adr + 4] = gyro_meas(1);
-      d->sensordata[adr + 5] = gyro_meas(2);
+      if (adr >= 0 && adr + 6 <= m->nsensordata) {
+        d->sensordata[adr + 0] = acc_meas(0);
+        d->sensordata[adr + 1] = acc_meas(1);
+        d->sensordata[adr + 2] = acc_meas(2);
+        d->sensordata[adr + 3] = gyro_meas(0);
+        d->sensordata[adr + 4] = gyro_meas(1);
+        d->sensordata[adr + 5] = gyro_meas(2);
+      }
       break;
     }
   }
@@ -164,14 +176,20 @@ void ImuNbkSensor::RegisterPlugin() {
   plugin.nsensordata = +[](const mjModel*, int, int) -> int { return 6; };
 
   plugin.init = +[](const mjModel* m, mjData* d, int instance) -> int {
+    if (!m || !d || !d->plugin_data) return -1;
     auto sensor = ImuNbkSensor::Create(m, d, instance);
     if (!sensor.has_value()) return -1;
+    if (d->plugin_data[instance] != 0) {
+      delete reinterpret_cast<ImuNbkSensor*>(d->plugin_data[instance]);
+      d->plugin_data[instance] = 0;
+    }
     d->plugin_data[instance] = reinterpret_cast<uintptr_t>(
         new ImuNbkSensor(std::move(*sensor)));
     return 0;
   };
 
   plugin.destroy = +[](mjData* d, int instance) {
+    if (!d || !d->plugin_data) return;
     delete reinterpret_cast<ImuNbkSensor*>(d->plugin_data[instance]);
     d->plugin_data[instance] = 0;
   };

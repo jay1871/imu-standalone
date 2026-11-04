@@ -34,17 +34,23 @@ struct AdevResult {
 
 std::vector<double> computeOctaveTaus(long totalSamples, double dt) {
   std::vector<double> taus;
+  if (totalSamples <= 0 || dt <= 0.0) {
+    return taus;
+  }
   double tau_min = dt;
-  double tau_max = totalSamples * dt / 3.0;
+  double tau_max = static_cast<double>(totalSamples) * dt / 3.0;
   double tau = tau_min;
   while (tau <= tau_max) {
     taus.push_back(tau);
     tau *= 2.0;
   }
+  if (!taus.empty() && taus.back() < 10000.0 && tau_max >= 10000.0) {
+    taus.push_back(10000.0);
+  }
   return taus;
 }
 
-std::vector<double> computeOverlappingAdev(const std::vector<double>& data,
+std::vector<double> computeOverlappingAdev(const std::vector<long double>& data,
                                             double dt,
                                             const std::vector<double>& taus) {
   long N = static_cast<long>(data.size());
@@ -58,26 +64,76 @@ std::vector<double> computeOverlappingAdev(const std::vector<double>& data,
       continue;
     }
 
-    double sum = 0.0;
+    long double sum = 0.0L;
     long count = 0;
-    for (long i = 0; i + 2 * m <= N; i++) {
-      double diff = data[i + 2 * m] - 2.0 * data[i + m] + data[i];
+    for (long i = 0; i + 2 * m < N; i++) {
+      long double diff = data[i + 2 * m] - 2.0L * data[i + m] + data[i];
       sum += diff * diff;
       count++;
     }
 
     if (count > 0) {
-      double tau_val = m * dt;
-      adev_out[ti] = std::sqrt(sum / (2.0 * tau_val * tau_val * count));
+      long double tau_val = static_cast<long double>(m) * static_cast<long double>(dt);
+      adev_out[ti] = static_cast<double>(
+          std::sqrt(sum / (2.0L * tau_val * tau_val * static_cast<long double>(count))));
     }
   }
   return adev_out;
 }
 
+#ifdef ENABLE_DUT_PARAMETER_SPREAD
+imu_simulator::ImuSimParams sampleDutParams(
+    const imu_simulator::ImuSimParams& base, int seed_offset,
+    unsigned int base_seed) {
+  imu_simulator::ImuSimParams p = base;
+  if (seed_offset <= 0) {
+    return p;
+  }
+  // Use a dedicated RNG stream for virtual DUT part-to-part parameter sampling
+  std::mt19937 rng(base_seed + 100000U + static_cast<unsigned int>(seed_offset));
+  std::normal_distribution<double> norm(0.0, 1.0);
+
+  auto samplePositiveZ = [&](double mean, double std_val, double z) -> double {
+    if (mean <= 0.0 || std_val <= 0.0) return mean;
+    // Log-normal distribution matching specified mean and std (guarantees positive parameters)
+    double cv2 = (std_val / mean) * (std_val / mean);
+    double sigma_ln = std::sqrt(std::log(1.0 + cv2));
+    double mu_ln = std::log(mean) - 0.5 * sigma_ln * sigma_ln;
+    return std::exp(mu_ln + sigma_ln * z);
+  };
+
+  const double rho_bk = 0.85;
+  const double rho_bk_comp = std::sqrt(1.0 - rho_bk * rho_bk);
+
+  for (int ax = 0; ax < 3; ax++) {
+    double z_n = norm(rng);
+    double z_b = norm(rng);
+    double z_k = rho_bk * z_b + rho_bk_comp * norm(rng);
+    double z_tc = norm(rng);
+    p.N(ax) = samplePositiveZ(base.N(ax), base.N_std(ax), z_n);
+    p.B(ax) = samplePositiveZ(base.B(ax), base.B_std(ax), z_b);
+    p.K(ax) = samplePositiveZ(base.K(ax), base.K_std(ax), z_k);
+    p.corrTime(ax) = samplePositiveZ(base.corrTime(ax), base.corrTime_std(ax), z_tc);
+  }
+  return p;
+}
+#endif
+
 AdevResult runSingleSeed(imu_simulator::SimulatorConfig& config, double dt,
-                          long totalSamples, int seed,
+                          long totalSamples, int seed, int seedIndex,
                           const std::vector<double>& taus) {
-  imu_simulator::ImuSimulator sim(config.accSimParams, config.gyroSimParams,
+#ifdef ENABLE_DUT_PARAMETER_SPREAD
+  auto accParams = sampleDutParams(config.accSimParams, seedIndex,
+                                   static_cast<unsigned int>(config.seed));
+  auto gyroParams = sampleDutParams(config.gyroSimParams, seedIndex,
+                                    static_cast<unsigned int>(config.seed));
+#else
+  (void)seedIndex;
+  const auto& accParams = config.accSimParams;
+  const auto& gyroParams = config.gyroSimParams;
+#endif
+
+  imu_simulator::ImuSimulator sim(accParams, gyroParams,
                                    config.enableSettings, config.geoPositionLlh,
                                    config.geoVelocityNed, dt, seed);
   sim.resetImuSimulator();
@@ -86,25 +142,27 @@ AdevResult runSingleSeed(imu_simulator::SimulatorConfig& config, double dt,
   Eigen::Vector3d w_true = Eigen::Vector3d::Zero();
   Eigen::Quaterniond q_identity(1.0, 0.0, 0.0, 0.0);
 
-  // Phase-integrated output (Allan deviation of frequency data = use raw values)
-  std::vector<double> acc_data[3];
-  std::vector<double> gyro_data[3];
+  // Phase-integrated output (N + 1 phase points for N frequency samples)
+  std::vector<long double> acc_data[3];
+  std::vector<long double> gyro_data[3];
   for (int ax = 0; ax < 3; ax++) {
-    acc_data[ax].reserve(totalSamples);
-    gyro_data[ax].reserve(totalSamples);
+    acc_data[ax].reserve(totalSamples + 1);
+    gyro_data[ax].reserve(totalSamples + 1);
+    acc_data[ax].push_back(0.0L);
+    gyro_data[ax].push_back(0.0L);
   }
+
+  const long double dt_ld = static_cast<long double>(dt);
 
   // Generate time series in memory
   for (long i = 0; i < totalSamples; i++) {
     Eigen::Vector3d acc = sim.generateAccelerationMeasurement(a_true, q_identity);
     Eigen::Vector3d gyro = sim.generateGyroscopeMeasurement(w_true, q_identity);
 
-    // Store phase (integrated) for OADEV — cumulative sum × dt
+    // Store phase (integrated) for OADEV — cumulative sum × dt in 80-bit extended precision
     for (int ax = 0; ax < 3; ax++) {
-      double prev_acc = acc_data[ax].empty() ? 0.0 : acc_data[ax].back();
-      double prev_gyro = gyro_data[ax].empty() ? 0.0 : gyro_data[ax].back();
-      acc_data[ax].push_back(prev_acc + acc(ax) * dt);
-      gyro_data[ax].push_back(prev_gyro + gyro(ax) * dt);
+      acc_data[ax].push_back(acc_data[ax].back() + static_cast<long double>(acc(ax)) * dt_ld);
+      gyro_data[ax].push_back(gyro_data[ax].back() + static_cast<long double>(gyro(ax)) * dt_ld);
     }
   }
 
@@ -132,6 +190,15 @@ int main(int argc, char** argv) {
   if (argc > 4) sampleRateHz = std::atof(argv[4]);
   if (argc > 5) numSeeds = std::atoi(argv[5]);
 
+  if (durationHours <= 0.0) {
+    std::cerr << "Error: duration_hours must be > 0\n";
+    return 1;
+  }
+  if (numSeeds < 1) {
+    std::cerr << "Error: num_seeds must be >= 1\n";
+    return 1;
+  }
+
   std::cout << "Loading config: " << configPath << std::endl;
 
   imu_simulator::SimulatorConfig config =
@@ -142,6 +209,10 @@ int main(int argc, char** argv) {
   }
 
   double dt = config.sampleTime;
+  if (dt <= 0.0) {
+    std::cerr << "Error: sample_time must be > 0\n";
+    return 1;
+  }
   double rate = 1.0 / dt;
 
   // Only stochastic errors enabled — disable everything else.
@@ -165,7 +236,9 @@ int main(int argc, char** argv) {
 
   double totalSeconds = durationHours * 3600.0;
   long totalSamples = static_cast<long>(totalSeconds / dt);
-  double memPerRun = (totalSamples * 6.0 * 8.0) / (1024.0 * 1024.0);
+  double memPerRun = (static_cast<double>(totalSamples + 1) * 6.0 *
+                      static_cast<double>(sizeof(long double))) /
+                     (1024.0 * 1024.0);
 
   std::cout << "Allan Deviation Validation (in-memory)" << std::endl;
   std::cout << "  Config:       " << configPath << std::endl;
@@ -200,7 +273,7 @@ int main(int argc, char** argv) {
     std::cout << "\r  Seed " << (s + 1) << "/" << numSeeds
               << " (seed=" << seed << ") — simulating..." << std::flush;
 
-    AdevResult result = runSingleSeed(config, dt, totalSamples, seed, taus);
+    AdevResult result = runSingleSeed(config, dt, totalSamples, seed, s, taus);
 
     // Welford update
     int n = s + 1;

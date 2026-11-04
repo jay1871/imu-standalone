@@ -34,28 +34,28 @@ imu_simulator:
   model_parameter_settings:
     # **************** Accelerometer Model Parameters ****************
     accelerometer:
-      # Velocity Random Walk (VRW) - from datasheet Table 1
+      # Velocity Random Walk (VRW) - fitted to real-world hardware measurements (47 DUTs, tau <= 1e4 s)
       # Datasheet: 0.045 m/sec/sqrt(hr) (X,Y), 0.042 m/sec/sqrt(hr) (Z)
+      # Measured 47-DUT fit: 0.0442 m/sec/sqrt(hr) (X), 0.0430 m/sec/sqrt(hr) (Y), 0.0418 m/sec/sqrt(hr) (Z)
       # SI: VRW / sqrt(3600) = VRW / 60
-      # X,Y: 0.045/60 = 7.500e-4
-      # Z:   0.042/60 = 7.000e-4
-      N: [7.500e-4, 7.500e-4, 7.000e-4]  # (m/s^(3/2))
+      N: [7.3724e-4, 7.1632e-4, 6.9738e-4]  # (m/s^(3/2))
 
-      # Bias Instability - from datasheet Table 1 & Allan deviation Fig 16
-      # Datasheet: 9 ug (X,Y), 13 ug (Z) — Allan deviation minimum
-      # SI: (bias_ug * 9.797464e-6) / 0.6645
-      # X,Y: (9e-6 * 9.797464) / 0.6645 = 1.3260e-4 m/s^2
-      # Z:   (13e-6 * 9.797464) / 0.6645 = 1.9154e-4 m/s^2
-      B: [1.3260e-4, 1.3260e-4, 1.9154e-4]  # (m/s^2)
+      # Bias Instability - fitted to real-world hardware measurements (47 DUTs)
+      # Measured Allan deviation minimum: 8.60 ug (X), 8.49 ug (Y), 11.53 ug (Z)
+      # Accounting for N and K quadrature contribution at the minimum:
+      B: [7.6000e-5, 7.6500e-5, 1.3800e-4]  # (m/s^2)
 
-      # Acceleration Random Walk
-      # ESTIMATE - not specified in ADIS16607 datasheet
-      # Update from Allan variance characterization data (long-tau +1/2 slope)
-      K: [1.0e-5, 1.0e-5, 1.0e-5]  # (m/s^(5/2)) ESTIMATE - update from AV characterization
+      # Acceleration Random Walk - fitted to real-world hardware measurements (long-tau +1/2 slope)
+      K: [6.2000e-6, 5.9500e-6, 6.7500e-6]  # (m/s^(5/2))
 
-      # Gauss-Markov correlation time
-      # From Allan deviation Fig 16: minimum around tau = 300s for all axes
-      correlation_time: [300.0, 300.0, 300.0]  # (s)
+      # Gauss-Markov correlation time - fitted to real-world hardware measurements
+      correlation_time: [235.0, 225.0, 175.0]  # (s)
+
+      # Optional part-to-part (DUT-to-DUT) 1-sigma parameter spread from real-world measurements
+      # Only used when compiled with ENABLE_DUT_PARAMETER_SPREAD defined:
+      # N_std: [1.8000e-5, 1.8000e-5, 1.7000e-5]  # (m/s^(3/2))
+      # B_std: [3.5000e-6, 7.5000e-6, 8.0000e-6]  # (m/s^2)
+      # correlation_time_std: [90.0, 90.0, 90.0]  # (s)
 
       # Turn-on bias interval - from datasheet "Initial Bias Error"
       # Datasheet: +/-2.5 mg
@@ -87,30 +87,27 @@ imu_simulator:
 
     # ****************** Gyroscope Model Parameters ******************
     gyroscope:
-      # Angular Random Walk (ARW) - from datasheet Table 1
-      # Datasheet: 0.19 deg/sqrt(hr) (all axes, ADIS16607-2, 1σ)
+      # Angular Random Walk (ARW) - fitted to real-world hardware measurements (33 DUTs, tau <= 1e4 s)
+      # Measured 33-DUT fit: 0.177 deg/sqrt(hr) (X), 0.168 deg/sqrt(hr) (Y), 0.077 deg/sqrt(hr) (Z)
       # SI: ARW * pi / 10800
-      # 0.19 * pi/10800 = 5.5269e-5
-      N: [5.5269e-5, 5.5269e-5, 5.5269e-5]  # (rad/s^(1/2))
+      N: [5.1400e-5, 4.8800e-5, 2.2400e-5]  # (rad/s^(1/2))
 
-      # Bias Instability - from datasheet Allan deviation Fig 6 (per-axis)
-      # Datasheet Table 1: 2.3 deg/hr (spec is Z-axis best, 1σ)
-      # From AV plot Fig 6: X,Y ~ 6-8 deg/hr mean, Z ~ 2.3 deg/hr mean
-      # Using: X = 7 deg/hr, Y = 7 deg/hr, Z = 2.3 deg/hr
-      # SI: (min_deghr * pi/648000) / 0.6645
-      # X: (7.0 * pi/648000) / 0.6645 = 5.1073e-5
-      # Y: (7.0 * pi/648000) / 0.6645 = 5.1073e-5
-      # Z: (2.3 * pi/648000) / 0.6645 = 1.6786e-5
-      B: [5.1073e-5, 5.1073e-5, 1.6786e-5]  # (rad/s)
+      # Bias Instability - hump-free fit to real-world hardware measurements (33 DUTs)
+      # SI: (bi_peak_deghr * pi/648000) / 0.6645
+      B: [7.6000e-6, 1.0200e-5, 5.9500e-6]  # (rad/s)
 
-      # Rate Random Walk - estimated from datasheet AV plot long-tau slope
-      # ESTIMATE - refine from AV characterization data
-      K: [8.2e-8, 8.2e-8, 3.9e-8]  # (rad/s^(3/2)) ESTIMATE - update from AV characterization
+      # Rate Random Walk - matched to real-world hardware measurements long-tau tail (2000s - 10000s)
+      K: [1.4200e-7, 2.4200e-7, 1.5000e-7]  # (rad/s^(3/2))
 
-      # Gauss-Markov correlation time - from Allan deviation Fig 6
-      # X,Y: minimum around tau = 2000s
-      # Z:   minimum around tau = 1500s
-      correlation_time: [2000.0, 2000.0, 1500.0]  # (s)
+      # Gauss-Markov correlation time - hump-free fit to real-world hardware measurements
+      correlation_time: [275.0, 255.0, 255.0]  # (s)
+
+      # Optional part-to-part (DUT-to-DUT) 1-sigma parameter spread from real-world measurements
+      # Only used when compiled with ENABLE_DUT_PARAMETER_SPREAD defined:
+      # N_std: [5.0000e-6, 3.4000e-6, 1.4000e-6]  # (rad/s^(1/2))
+      # B_std: [1.5000e-6, 6.2000e-6, 3.6000e-6]  # (rad/s)
+      # K_std: [4.6000e-8, 1.5000e-7, 9.0000e-8]  # (rad/s^(3/2))
+      # correlation_time_std: [200.0, 180.0, 180.0]  # (s)
 
       # Turn-on bias interval - from datasheet "Initial Bias Error"
       # Datasheet: +/-0.2 deg/sec

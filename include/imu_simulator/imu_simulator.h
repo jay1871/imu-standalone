@@ -24,8 +24,12 @@ class ImuSimulator {
       Eigen::Vector3d v_eb_n = Eigen::Vector3d::Zero(), double dt = 0.01,
       int seed = 42);
 
-  // Destructor
+  // Destructor and copy/move semantics (Rule of Five for deep state copy)
   ~ImuSimulator();
+  ImuSimulator(const ImuSimulator& other);
+  ImuSimulator& operator=(const ImuSimulator& other);
+  ImuSimulator(ImuSimulator&& other) noexcept = default;
+  ImuSimulator& operator=(ImuSimulator&& other) noexcept = default;
 
   // Measurement generation functions
   Eigen::Vector3d generateAccelerationMeasurement(
