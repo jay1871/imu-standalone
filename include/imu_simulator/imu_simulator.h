@@ -178,7 +178,11 @@ class ImuSimulator {
   double updateDiscreteTimeEquivalentStateSpaceModel(
       std::shared_ptr<ImuStochasticErrors> pImuStochasticErrors, const double N,
       const double B, const double K, const double corrTime,
-      const AxisIdentifier axisId);
+      const AxisIdentifier axisId, int numPoles = 1,
+      const Eigen::Matrix<double, 1, kMaxGmPoles>& bPoles =
+          Eigen::Matrix<double, 1, kMaxGmPoles>::Zero(),
+      const Eigen::Matrix<double, 1, kMaxGmPoles>& corrTimePoles =
+          Eigen::Matrix<double, 1, kMaxGmPoles>::Constant(100.0));
 
   // Saturation model
   Eigen::Vector3d calcSaturationModel(const Eigen::Vector3d& measurement,

@@ -30,32 +30,37 @@ def init_state() -> dict:
 
 def _nbk_axis_update(z_B: float, z_K: float, N: float, B: float, K: float,
                      corr_time: float, dt: float, rng: Generator,
-                     fixed_draws: np.ndarray | None = None) -> tuple:
-    """Single-axis NBK stochastic update (matches C++ exactly).
-
-    Args:
-        z_B: Current bias instability state
-        z_K: Current rate random walk state
-        N: Velocity/angular random walk coefficient
-        B: Bias instability coefficient
-        K: Accel/rate random walk coefficient
-        corr_time: Gauss-Markov correlation time (s)
-        dt: Sample time (s)
-        rng: NumPy random generator
-        fixed_draws: If not None, use these 3 values instead of random draws
-
-    Returns:
-        (z_B_new, z_K_new, output)
-    """
+                     fixed_draws: np.ndarray | None = None,
+                     z_B_poles: np.ndarray | None = None,
+                     B_poles: np.ndarray | None = None,
+                     corr_time_poles: np.ndarray | None = None) -> tuple:
+    """Single-axis NBK stochastic update (matches C++ exactly, single- or multi-pole)."""
     S_N = N * N
-    S_B = (2.0 * B * B * np.log(2.0)) / (np.pi * 0.4365**2 * corr_time)
     S_K = K * K
+    Q_K = S_K * dt
+    Q_N = S_N / dt
+
+    if B_poles is not None and corr_time_poles is not None and fixed_draws is None:
+        n_poles = len(B_poles)
+        r = rng.standard_normal(n_poles + 2)
+        w_N = np.sqrt(Q_N) * r[0]
+        w_K = np.sqrt(Q_K) * r[-1]
+        cur_poles = z_B_poles if z_B_poles is not None else np.zeros(n_poles)
+        beta_p = 1.0 / corr_time_poles
+        S_B_p = (2.0 * B_poles**2 * np.log(2.0)) / (np.pi * 0.4365**2 * corr_time_poles)
+        phi_p = np.exp(-beta_p * dt)
+        Q_B_p = S_B_p / (2.0 * beta_p) * (1.0 - np.exp(-2.0 * beta_p * dt))
+        new_poles = phi_p * cur_poles + np.sqrt(Q_B_p) * r[1:1 + n_poles]
+        z_B_new = float(np.sum(new_poles))
+        z_K_new = z_K + w_K
+        output = float(np.sum(cur_poles)) + z_K + w_N
+        return z_B_new, z_K_new, output, new_poles
+
+    S_B = (2.0 * B * B * np.log(2.0)) / (np.pi * 0.4365**2 * corr_time)
     beta = 1.0 / corr_time
 
     phi = np.exp(-beta * dt)
     Q_B = S_B / (2.0 * beta) * (1.0 - np.exp(-2.0 * beta * dt))
-    Q_K = S_K * dt
-    Q_N = S_N / dt
 
     if fixed_draws is not None:
         r = fixed_draws
@@ -73,7 +78,7 @@ def _nbk_axis_update(z_B: float, z_K: float, N: float, B: float, K: float,
     # Output uses CURRENT state (before update), same as C++
     output = z_B + z_K + w_N
 
-    return z_B_new, z_K_new, output
+    return z_B_new, z_K_new, output, None
 
 
 def step(state: dict, params: ImuNbkParams, rng: Generator,
@@ -102,27 +107,51 @@ def step(state: dict, params: ImuNbkParams, rng: Generator,
     # Accelerometer (axes 0,1,2)
     new_acc_z_B = np.zeros(3)
     new_acc_z_K = np.zeros(3)
+    acc_poles_state = state.get("acc_z_B_poles", None)
+    new_acc_poles = (
+        np.zeros_like(params.acc_B_poles)
+        if params.acc_B_poles is not None and fixed_draws is None
+        else None
+    )
     for ax in range(3):
         draws = fixed_draws[ax * 3:(ax + 1) * 3] if fixed_draws is not None else None
-        z_B_new, z_K_new, out = _nbk_axis_update(
+        z_B_new, z_K_new, out, poles_new = _nbk_axis_update(
             state["acc_z_B"][ax], state["acc_z_K"][ax],
             params.acc_N[ax], params.acc_B[ax], params.acc_K[ax],
-            params.acc_corr_time[ax], dt, rng, draws)
+            params.acc_corr_time[ax], dt, rng, draws,
+            acc_poles_state[ax] if acc_poles_state is not None else None,
+            params.acc_B_poles[ax] if params.acc_B_poles is not None else None,
+            params.acc_corr_time_poles[ax] if params.acc_corr_time_poles is not None else None,
+        )
         new_acc_z_B[ax] = z_B_new
         new_acc_z_K[ax] = z_K_new
+        if new_acc_poles is not None and poles_new is not None:
+            new_acc_poles[ax] = poles_new
         noise[ax] = out
 
     # Gyroscope (axes 3,4,5)
     new_gyro_z_B = np.zeros(3)
     new_gyro_z_K = np.zeros(3)
+    gyro_poles_state = state.get("gyro_z_B_poles", None)
+    new_gyro_poles = (
+        np.zeros_like(params.gyro_B_poles)
+        if params.gyro_B_poles is not None and fixed_draws is None
+        else None
+    )
     for ax in range(3):
         draws = fixed_draws[(3 + ax) * 3:(4 + ax) * 3] if fixed_draws is not None else None
-        z_B_new, z_K_new, out = _nbk_axis_update(
+        z_B_new, z_K_new, out, poles_new = _nbk_axis_update(
             state["gyro_z_B"][ax], state["gyro_z_K"][ax],
             params.gyro_N[ax], params.gyro_B[ax], params.gyro_K[ax],
-            params.gyro_corr_time[ax], dt, rng, draws)
+            params.gyro_corr_time[ax], dt, rng, draws,
+            gyro_poles_state[ax] if gyro_poles_state is not None else None,
+            params.gyro_B_poles[ax] if params.gyro_B_poles is not None else None,
+            params.gyro_corr_time_poles[ax] if params.gyro_corr_time_poles is not None else None,
+        )
         new_gyro_z_B[ax] = z_B_new
         new_gyro_z_K[ax] = z_K_new
+        if new_gyro_poles is not None and poles_new is not None:
+            new_gyro_poles[ax] = poles_new
         noise[3 + ax] = out
 
     new_state = {
@@ -131,6 +160,10 @@ def step(state: dict, params: ImuNbkParams, rng: Generator,
         "gyro_z_B": new_gyro_z_B,
         "gyro_z_K": new_gyro_z_K,
     }
+    if new_acc_poles is not None:
+        new_state["acc_z_B_poles"] = new_acc_poles
+    if new_gyro_poles is not None:
+        new_state["gyro_z_B_poles"] = new_gyro_poles
 
     return new_state, noise
 

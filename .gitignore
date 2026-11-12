@@ -24,6 +24,7 @@ dist/
 .pytest_cache/
 
 # Data and plot outputs (keep golden test files)
+imudata/
 *.csv
 !test/golden/*.csv
 *.png

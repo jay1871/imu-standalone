@@ -15,10 +15,14 @@ All rights reserved.
 
 namespace imu_simulator {
 
+constexpr int kMaxGmPoles = 4;
+
 struct ImuStochasticErrors {
   Eigen::Vector3d z_N = Eigen::Vector3d::Zero();  // Velocity/angular random walk
-  Eigen::Vector3d z_B = Eigen::Vector3d::Zero();  // Bias instability
+  Eigen::Vector3d z_B = Eigen::Vector3d::Zero();  // Total bias instability (sum of poles)
   Eigen::Vector3d z_K = Eigen::Vector3d::Zero();  // Accel./rate random walk
+  Eigen::Matrix<double, 3, kMaxGmPoles> z_B_poles =
+      Eigen::Matrix<double, 3, kMaxGmPoles>::Zero();  // Per-pole Gauss-Markov bias states
 };
 
 struct ImuSimParams {
@@ -26,6 +30,11 @@ struct ImuSimParams {
   Eigen::Vector3d B = Eigen::Vector3d::Zero();  // Bias instability (m/s^2)/(rad/s)
   Eigen::Vector3d K = Eigen::Vector3d::Zero();  // Accel./rate random walk (m/s^(5/2)))/(rad/s^(3/2)))
   Eigen::Vector3d corrTime = Eigen::Vector3d::Constant(100.0);  // Correlation time (s)
+  int numGmPoles = 1;  // Number of Gauss-Markov poles per axis (1 = standard single-pole, up to kMaxGmPoles)
+  Eigen::Matrix<double, 3, kMaxGmPoles> B_poles =
+      Eigen::Matrix<double, 3, kMaxGmPoles>::Zero();  // Multi-pole bias instability (rows: X,Y,Z; cols: poles)
+  Eigen::Matrix<double, 3, kMaxGmPoles> corrTime_poles =
+      Eigen::Matrix<double, 3, kMaxGmPoles>::Constant(100.0);  // Multi-pole correlation times (s)
 #ifdef ENABLE_DUT_PARAMETER_SPREAD
   Eigen::Vector3d N_std = Eigen::Vector3d::Zero();         // Optional DUT-to-DUT 1-sigma spread for N
   Eigen::Vector3d B_std = Eigen::Vector3d::Zero();         // Optional DUT-to-DUT 1-sigma spread for B

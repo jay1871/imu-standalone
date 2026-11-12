@@ -39,10 +39,12 @@ ImuSimulator::ImuSimulator(ImuSimParams accSimParams,
   pAccStochasticErrors_->z_N = Eigen::Vector3d::Zero();
   pAccStochasticErrors_->z_B = Eigen::Vector3d::Zero();
   pAccStochasticErrors_->z_K = Eigen::Vector3d::Zero();
+  pAccStochasticErrors_->z_B_poles.setZero();
 
   pGyroStochasticErrors_->z_N = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_B = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_K = Eigen::Vector3d::Zero();
+  pGyroStochasticErrors_->z_B_poles.setZero();
 
   // Initialize local gravity vector
   environmentalParameters_.g_n = calcGravityVectorWelmec(geoPositionLlh_);
@@ -964,13 +966,19 @@ Eigen::Vector3d ImuSimulator::calcStochasticErrorModel(
     // Get colored noise for each axis
     coloredNoise(0) = updateDiscreteTimeEquivalentStateSpaceModel(
         pAccStochasticErrors_, accSimParams_.N(axisX), accSimParams_.B(axisX),
-        accSimParams_.K(axisX), accSimParams_.corrTime(axisX), axisX);
+        accSimParams_.K(axisX), accSimParams_.corrTime(axisX), axisX,
+        accSimParams_.numGmPoles, accSimParams_.B_poles.row(axisX),
+        accSimParams_.corrTime_poles.row(axisX));
     coloredNoise(1) = updateDiscreteTimeEquivalentStateSpaceModel(
         pAccStochasticErrors_, accSimParams_.N(axisY), accSimParams_.B(axisY),
-        accSimParams_.K(axisY), accSimParams_.corrTime(axisY), axisY);
+        accSimParams_.K(axisY), accSimParams_.corrTime(axisY), axisY,
+        accSimParams_.numGmPoles, accSimParams_.B_poles.row(axisY),
+        accSimParams_.corrTime_poles.row(axisY));
     coloredNoise(2) = updateDiscreteTimeEquivalentStateSpaceModel(
         pAccStochasticErrors_, accSimParams_.N(axisZ), accSimParams_.B(axisZ),
-        accSimParams_.K(axisZ), accSimParams_.corrTime(axisZ), axisZ);
+        accSimParams_.K(axisZ), accSimParams_.corrTime(axisZ), axisZ,
+        accSimParams_.numGmPoles, accSimParams_.B_poles.row(axisZ),
+        accSimParams_.corrTime_poles.row(axisZ));
 
     // Add stochastic error to measurement
     measurementWithStochasticError = measurement + coloredNoise;
@@ -980,15 +988,21 @@ Eigen::Vector3d ImuSimulator::calcStochasticErrorModel(
     coloredNoise(0) = updateDiscreteTimeEquivalentStateSpaceModel(
         pGyroStochasticErrors_, gyroSimParams_.N(axisX),
         gyroSimParams_.B(axisX), gyroSimParams_.K(axisX),
-        gyroSimParams_.corrTime(axisX), axisX);
+        gyroSimParams_.corrTime(axisX), axisX, gyroSimParams_.numGmPoles,
+        gyroSimParams_.B_poles.row(axisX),
+        gyroSimParams_.corrTime_poles.row(axisX));
     coloredNoise(1) = updateDiscreteTimeEquivalentStateSpaceModel(
         pGyroStochasticErrors_, gyroSimParams_.N(axisY),
         gyroSimParams_.B(axisY), gyroSimParams_.K(axisY),
-        gyroSimParams_.corrTime(axisY), axisY);
+        gyroSimParams_.corrTime(axisY), axisY, gyroSimParams_.numGmPoles,
+        gyroSimParams_.B_poles.row(axisY),
+        gyroSimParams_.corrTime_poles.row(axisY));
     coloredNoise(2) = updateDiscreteTimeEquivalentStateSpaceModel(
         pGyroStochasticErrors_, gyroSimParams_.N(axisZ),
         gyroSimParams_.B(axisZ), gyroSimParams_.K(axisZ),
-        gyroSimParams_.corrTime(axisZ), axisZ);
+        gyroSimParams_.corrTime(axisZ), axisZ, gyroSimParams_.numGmPoles,
+        gyroSimParams_.B_poles.row(axisZ),
+        gyroSimParams_.corrTime_poles.row(axisZ));
 
     // Add stochastic error to measurement
     measurementWithStochasticError = measurement + coloredNoise;
@@ -1030,71 +1044,119 @@ Eigen::Vector3d ImuSimulator::calcStochasticErrorModel(
 double ImuSimulator::updateDiscreteTimeEquivalentStateSpaceModel(
     std::shared_ptr<ImuStochasticErrors> pImuStochasticErrors, const double N,
     const double B, const double K, const double corrTime,
-    const AxisIdentifier axisId) {
-  const double safeCorrTime = (corrTime > 0.0) ? corrTime : 100.0;
+    const AxisIdentifier axisId, int numPoles,
+    const Eigen::Matrix<double, 1, kMaxGmPoles>& bPoles,
+    const Eigen::Matrix<double, 1, kMaxGmPoles>& corrTimePoles) {
   const double safeDt = (dt_ > 0.0) ? dt_ : 0.001;
 
   // PSD velocity/angle random walk
-  double S_N = N * N;
-
-  // PSD bias instability
-  double S_B =
-      (2 * B * B * std::log(2)) / (M_PI * 0.4365 * 0.4365 * safeCorrTime);
+  const double S_N = N * N;
 
   // PSD accel./rate random walk
-  double S_K = K * K;
-
-  // Gauss-Markov time correlation constant
-  double corrConstant = 1.0 / safeCorrTime;
-
-  // Discrete-time state-space model matrices
-  Eigen::Matrix2d Phi_k;
-  Phi_k << std::exp(-corrConstant * safeDt), 0, 0, 1;
-
-  Eigen::MatrixXd H(1, 2);
-  H << 1, 1;
-
-  // Discrete-time bias instability covariance
-  double Q_B_k =
-      S_B / (2 * corrConstant) * (1 - std::exp(-2 * corrConstant * safeDt));
+  const double S_K = K * K;
 
   // Discrete-time rate random walk covariance
-  double Q_K_k = S_K * safeDt;
+  const double Q_K_k = S_K * safeDt;
 
   // Discrete-time measurement noise covariance (velocity/angle random walk)
-  double Q_N_k = S_N / safeDt;
+  const double Q_N_k = S_N / safeDt;
 
-  // Draw normal distributed random samples from white noise processes
-  Eigen::Vector3d randomNumbers(drawRandNormalDistNum(), drawRandNormalDistNum(),
-                                drawRandNormalDistNum());
+  if (numPoles <= 1) {
+    const double safeCorrTime = (corrTime > 0.0) ? corrTime : 100.0;
 
-  // Draw measurement noise scalar (velocity/angle random walk)
-  Eigen::VectorXd nu_N_k =
-      Eigen::VectorXd::Constant(1, std::sqrt(Q_N_k) * randomNumbers(0));
+    // PSD bias instability
+    const double S_B =
+        (2 * B * B * std::log(2)) / (M_PI * 0.4365 * 0.4365 * safeCorrTime);
 
-  // Draw process noise vector (bias instability and accel./rate random walk)
-  Eigen::Vector2d w_BK_k = Eigen::Vector2d(std::sqrt(Q_B_k) * randomNumbers(1),
-                                           std::sqrt(Q_K_k) * randomNumbers(2));
+    // Gauss-Markov time correlation constant
+    const double corrConstant = 1.0 / safeCorrTime;
 
-  // Create state vector for one axis
-  double z_B = pImuStochasticErrors->z_B(axisId);
-  double z_K = pImuStochasticErrors->z_K(axisId);
+    // Discrete-time state-space model matrices
+    Eigen::Matrix2d Phi_k;
+    Phi_k << std::exp(-corrConstant * safeDt), 0, 0, 1;
 
-  Eigen::Vector2d x_k = Eigen::Vector2d(z_B, z_K);
+    Eigen::MatrixXd H(1, 2);
+    H << 1, 1;
 
-  // Calculate new state vector
-  Eigen::Vector2d x_k_1 = Phi_k * x_k + w_BK_k;
+    // Discrete-time bias instability covariance
+    const double Q_B_k =
+        S_B / (2 * corrConstant) * (1 - std::exp(-2 * corrConstant * safeDt));
 
-  // Calculate new measurement vector
-  Eigen::VectorXd z_k = H * x_k + nu_N_k;
+    // Draw normal distributed random samples from white noise processes
+    Eigen::Vector3d randomNumbers(drawRandNormalDistNum(), drawRandNormalDistNum(),
+                                  drawRandNormalDistNum());
 
-  // Update internal Gauss-Markov state space model
-  pImuStochasticErrors->z_N(axisId) = z_k(0);
-  pImuStochasticErrors->z_B(axisId) = x_k_1(0);
-  pImuStochasticErrors->z_K(axisId) = x_k_1(1);
+    // Draw measurement noise scalar (velocity/angle random walk)
+    Eigen::VectorXd nu_N_k =
+        Eigen::VectorXd::Constant(1, std::sqrt(Q_N_k) * randomNumbers(0));
 
-  // Return colored noise as double (scalar)
-  return z_k(0);
+    // Draw process noise vector (bias instability and accel./rate random walk)
+    Eigen::Vector2d w_BK_k = Eigen::Vector2d(std::sqrt(Q_B_k) * randomNumbers(1),
+                                             std::sqrt(Q_K_k) * randomNumbers(2));
+
+    // Create state vector for one axis
+    const double z_B = pImuStochasticErrors->z_B(axisId);
+    const double z_K = pImuStochasticErrors->z_K(axisId);
+
+    Eigen::Vector2d x_k = Eigen::Vector2d(z_B, z_K);
+
+    // Calculate new state vector
+    Eigen::Vector2d x_k_1 = Phi_k * x_k + w_BK_k;
+
+    // Calculate new measurement vector
+    Eigen::VectorXd z_k = H * x_k + nu_N_k;
+
+    // Update internal Gauss-Markov state space model
+    pImuStochasticErrors->z_N(axisId) = z_k(0);
+    pImuStochasticErrors->z_B(axisId) = x_k_1(0);
+    pImuStochasticErrors->z_B_poles(axisId, 0) = x_k_1(0);
+    pImuStochasticErrors->z_K(axisId) = x_k_1(1);
+
+    // Return colored noise as double (scalar)
+    return z_k(0);
+  }
+
+  // Multi-pole Gauss-Markov bank (1/f flicker floor approximation)
+  const int activePoles = std::min(numPoles, kMaxGmPoles);
+  const double r_N = drawRandNormalDistNum();
+  double r_B[kMaxGmPoles];
+  for (int p = 0; p < activePoles; ++p) {
+    r_B[p] = drawRandNormalDistNum();
+  }
+  const double r_K = drawRandNormalDistNum();
+
+  const double nu_N_k = std::sqrt(Q_N_k) * r_N;
+  const double w_K_k = std::sqrt(Q_K_k) * r_K;
+
+  double cur_z_B_sum = 0.0;
+  double next_z_B_sum = 0.0;
+  for (int p = 0; p < activePoles; ++p) {
+    const double b_p = bPoles(p);
+    const double tc_p = (corrTimePoles(p) > 0.0) ? corrTimePoles(p) : 100.0;
+    const double beta_p = 1.0 / tc_p;
+    const double S_B_p =
+        (2.0 * b_p * b_p * std::log(2.0)) / (M_PI * 0.4365 * 0.4365 * tc_p);
+    const double phi_p = std::exp(-beta_p * safeDt);
+    const double Q_B_p =
+        S_B_p / (2.0 * beta_p) * (1.0 - std::exp(-2.0 * beta_p * safeDt));
+
+    const double cur_z_B_p = pImuStochasticErrors->z_B_poles(axisId, p);
+    const double next_z_B_p = phi_p * cur_z_B_p + std::sqrt(Q_B_p) * r_B[p];
+
+    cur_z_B_sum += cur_z_B_p;
+    next_z_B_sum += next_z_B_p;
+    pImuStochasticErrors->z_B_poles(axisId, p) = next_z_B_p;
+  }
+
+  const double cur_z_K = pImuStochasticErrors->z_K(axisId);
+  const double next_z_K = cur_z_K + w_K_k;
+  const double z_k_out = cur_z_B_sum + cur_z_K + nu_N_k;
+
+  pImuStochasticErrors->z_N(axisId) = z_k_out;
+  pImuStochasticErrors->z_B(axisId) = next_z_B_sum;
+  pImuStochasticErrors->z_K(axisId) = next_z_K;
+
+  return z_k_out;
 }
 
 /** 
@@ -1304,10 +1366,12 @@ void ImuSimulator::resetImuSimulator() {
   pAccStochasticErrors_->z_N = Eigen::Vector3d::Zero();
   pAccStochasticErrors_->z_B = Eigen::Vector3d::Zero();
   pAccStochasticErrors_->z_K = Eigen::Vector3d::Zero();
+  pAccStochasticErrors_->z_B_poles.setZero();
 
   pGyroStochasticErrors_->z_N = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_B = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_K = Eigen::Vector3d::Zero();
+  pGyroStochasticErrors_->z_B_poles.setZero();
 
   // Re-seed RNG to produce the same sequence from the beginning
   randomNumberGenerator_.seed(seed_);

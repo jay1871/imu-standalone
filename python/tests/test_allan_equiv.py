@@ -16,15 +16,24 @@ from imu_nbk.params import load_config
 pytestmark = pytest.mark.slow
 
 
-def compute_theoretical_adev(tau, N, B, K, corr_time):
-    """Theoretical Allan deviation from NBK parameters (exact Gauss-Markov)."""
-    beta = 1.0 / corr_time
-    S_B = (2.0 * B**2 * np.log(2.0)) / (np.pi * 0.4365**2 * corr_time)
-    x = beta * tau
-    sigma2_B = (S_B / (beta * x)) * (
-        1.0 - (1.0 / (2.0 * x)) * (3.0 - 4.0 * np.exp(-x) + np.exp(-2.0 * x)))
+def compute_theoretical_adev(tau, N, B, K, corr_time, B_poles=None, corr_time_poles=None):
+    """Theoretical Allan deviation from NBK parameters (exact Gauss-Markov, single or multi-pole)."""
     sigma2_N = N**2 / tau
     sigma2_K = K**2 * tau / 3.0
+    if B_poles is not None and corr_time_poles is not None:
+        sigma2_B = 0.0
+        for b_p, tc_p in zip(B_poles, corr_time_poles):
+            beta = 1.0 / tc_p
+            S_B = (2.0 * b_p**2 * np.log(2.0)) / (np.pi * 0.4365**2 * tc_p)
+            x = beta * tau
+            sigma2_B += (S_B / (beta * x)) * (
+                1.0 - (1.0 / (2.0 * x)) * (3.0 - 4.0 * np.exp(-x) + np.exp(-2.0 * x)))
+    else:
+        beta = 1.0 / corr_time
+        S_B = (2.0 * B**2 * np.log(2.0)) / (np.pi * 0.4365**2 * corr_time)
+        x = beta * tau
+        sigma2_B = (S_B / (beta * x)) * (
+            1.0 - (1.0 / (2.0 * x)) * (3.0 - 4.0 * np.exp(-x) + np.exp(-2.0 * x)))
     return np.sqrt(sigma2_N + sigma2_B + sigma2_K)
 
 
@@ -72,7 +81,9 @@ class TestAllanVarianceNumpy:
         # Theory at this tau (accel X-axis)
         theory = compute_theoretical_adev(
             tau_val, params.acc_N[0], params.acc_B[0],
-            params.acc_K[0], params.acc_corr_time[0])
+            params.acc_K[0], params.acc_corr_time[0],
+            params.acc_B_poles[0] if params.acc_B_poles is not None else None,
+            params.acc_corr_time_poles[0] if params.acc_corr_time_poles is not None else None)
 
         # Should match within 20% (generous for 1-hour run)
         ratio = measured / theory
@@ -94,7 +105,9 @@ class TestAllanVarianceNumpy:
         measured = adev[idx]
         theory = compute_theoretical_adev(
             tau_val, params.acc_N[0], params.acc_B[0],
-            params.acc_K[0], params.acc_corr_time[0])
+            params.acc_K[0], params.acc_corr_time[0],
+            params.acc_B_poles[0] if params.acc_B_poles is not None else None,
+            params.acc_corr_time_poles[0] if params.acc_corr_time_poles is not None else None)
 
         ratio = measured / theory
         assert 0.7 < ratio < 1.3, (

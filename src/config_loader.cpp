@@ -52,6 +52,38 @@ ImuSimParams readSensorParams(const YAML::Node& node) {
   params.B = readVector3d(node, "B");
   params.K = readVector3d(node, "K");
   params.corrTime = readVector3d(node, "correlation_time");
+  params.numGmPoles = 1;
+  params.B_poles.setZero();
+  params.corrTime_poles.setConstant(100.0);
+  params.B_poles.col(0) = params.B;
+  params.corrTime_poles.col(0) = params.corrTime;
+
+  auto bPolesNode = node["B_poles"];
+  auto tcPolesNode = node["correlation_time_poles"];
+  if (bPolesNode && tcPolesNode) {
+    if (!bPolesNode.IsSequence() || bPolesNode.size() != 3 ||
+        !tcPolesNode.IsSequence() || tcPolesNode.size() != 3) {
+      throw std::runtime_error(
+          "Expected 3-row sequence for B_poles and correlation_time_poles");
+    }
+    int nPoles = static_cast<int>(bPolesNode[0].size());
+    if (nPoles < 1 || nPoles > kMaxGmPoles) {
+      throw std::runtime_error("Number of GM poles must be between 1 and " +
+                               std::to_string(kMaxGmPoles));
+    }
+    params.numGmPoles = nPoles;
+    for (int ax = 0; ax < 3; ax++) {
+      if (static_cast<int>(bPolesNode[ax].size()) != nPoles ||
+          static_cast<int>(tcPolesNode[ax].size()) != nPoles) {
+        throw std::runtime_error(
+            "All axes must have the same number of poles in B_poles and correlation_time_poles");
+      }
+      for (int p = 0; p < nPoles; p++) {
+        params.B_poles(ax, p) = bPolesNode[ax][p].as<double>();
+        params.corrTime_poles(ax, p) = tcPolesNode[ax][p].as<double>();
+      }
+    }
+  }
 #ifdef ENABLE_DUT_PARAMETER_SPREAD
   params.N_std = readOptionalVector3d(node, "N_std");
   params.B_std = readOptionalVector3d(node, "B_std");

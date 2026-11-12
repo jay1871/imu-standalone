@@ -9,7 +9,7 @@ option(BUILD_TESTS "Build unit tests" ON)
 option(BUILD_APPS "Build application executables" ON)
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(IMU_BUILD_MUJOCO_PLUGIN "Build MuJoCo C sensor plugin (requires mujoco)" OFF)
-option(ENABLE_DUT_PARAMETER_SPREAD "Enable multi-DUT part-to-part parameter spread (*_std fields) from real-world measurements" OFF)
+option(ENABLE_DUT_PARAMETER_SPREAD "Enable multi-DUT part-to-part parameter spread (*_std fields) for multi-seed allan_validation runs" ON)
 
 if(ENABLE_DUT_PARAMETER_SPREAD)
   add_compile_definitions(ENABLE_DUT_PARAMETER_SPREAD)
@@ -57,8 +57,12 @@ target_link_libraries(imu_simulator_config
 
 # --- Application executables ---
 if(BUILD_APPS)
+  find_package(OpenMP QUIET)
   add_executable(allan_validation apps/allan_validation.cpp)
   target_link_libraries(allan_validation PRIVATE imu_simulator_config)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(allan_validation PRIVATE OpenMP::OpenMP_CXX)
+  endif()
 endif()
 
 # --- Tests ---

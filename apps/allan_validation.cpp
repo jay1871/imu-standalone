@@ -15,6 +15,8 @@
  *   ./allan_validation ../config/adis16607.yaml adev.csv 10 1000 100    # 100 seeds (mean±σ)
  */
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -23,6 +25,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #include "config_loader.h"
 
@@ -114,6 +119,14 @@ imu_simulator::ImuSimParams sampleDutParams(
     p.B(ax) = samplePositiveZ(base.B(ax), base.B_std(ax), z_b);
     p.K(ax) = samplePositiveZ(base.K(ax), base.K_std(ax), z_k);
     p.corrTime(ax) = samplePositiveZ(base.corrTime(ax), base.corrTime_std(ax), z_tc);
+    if (base.B(ax) > 0.0) {
+      double b_scale = p.B(ax) / base.B(ax);
+      p.B_poles.row(ax) = base.B_poles.row(ax) * b_scale;
+    }
+    if (base.corrTime(ax) > 0.0) {
+      double tc_scale = p.corrTime(ax) / base.corrTime(ax);
+      p.corrTime_poles.row(ax) = base.corrTime_poles.row(ax) * tc_scale;
+    }
   }
   return p;
 }
@@ -121,14 +134,20 @@ imu_simulator::ImuSimParams sampleDutParams(
 
 AdevResult runSingleSeed(imu_simulator::SimulatorConfig& config, double dt,
                           long totalSamples, int seed, int seedIndex,
-                          const std::vector<double>& taus) {
+                          const std::vector<double>& taus,
+                          bool enableDutSpread) {
 #ifdef ENABLE_DUT_PARAMETER_SPREAD
-  auto accParams = sampleDutParams(config.accSimParams, seedIndex,
-                                   static_cast<unsigned int>(config.seed));
-  auto gyroParams = sampleDutParams(config.gyroSimParams, seedIndex,
-                                    static_cast<unsigned int>(config.seed));
+  auto accParams = enableDutSpread
+                       ? sampleDutParams(config.accSimParams, seedIndex,
+                                         static_cast<unsigned int>(config.seed))
+                       : config.accSimParams;
+  auto gyroParams = enableDutSpread
+                        ? sampleDutParams(config.gyroSimParams, seedIndex,
+                                          static_cast<unsigned int>(config.seed))
+                        : config.gyroSimParams;
 #else
   (void)seedIndex;
+  (void)enableDutSpread;
   const auto& accParams = config.accSimParams;
   const auto& gyroParams = config.gyroSimParams;
 #endif
@@ -183,12 +202,23 @@ int main(int argc, char** argv) {
   double durationHours = 10.0;
   double sampleRateHz = 0.0;
   int numSeeds = 1;
+  bool forceNoSpread = false;
 
-  if (argc > 1) configPath = argv[1];
-  if (argc > 2) outputPath = argv[2];
-  if (argc > 3) durationHours = std::atof(argv[3]);
-  if (argc > 4) sampleRateHz = std::atof(argv[4]);
-  if (argc > 5) numSeeds = std::atoi(argv[5]);
+  std::vector<std::string> posArgs;
+  for (int i = 1; i < argc; i++) {
+    std::string arg = argv[i];
+    if (arg == "--no-spread") {
+      forceNoSpread = true;
+    } else {
+      posArgs.push_back(arg);
+    }
+  }
+
+  if (posArgs.size() > 0) configPath = posArgs[0];
+  if (posArgs.size() > 1) outputPath = posArgs[1];
+  if (posArgs.size() > 2) durationHours = std::atof(posArgs[2].c_str());
+  if (posArgs.size() > 3) sampleRateHz = std::atof(posArgs[3].c_str());
+  if (posArgs.size() > 4) numSeeds = std::atoi(posArgs[4].c_str());
 
   if (durationHours <= 0.0) {
     std::cerr << "Error: duration_hours must be > 0\n";
@@ -240,6 +270,8 @@ int main(int argc, char** argv) {
                       static_cast<double>(sizeof(long double))) /
                      (1024.0 * 1024.0);
 
+  bool enableDutSpread = (numSeeds > 1) && !forceNoSpread;
+
   std::cout << "Allan Deviation Validation (in-memory)" << std::endl;
   std::cout << "  Config:       " << configPath << std::endl;
   std::cout << "  Output:       " << outputPath << std::endl;
@@ -248,6 +280,14 @@ int main(int argc, char** argv) {
   std::cout << "  Total samples:" << totalSamples << std::endl;
   std::cout << "  RAM per run:  " << static_cast<int>(memPerRun) << " MB" << std::endl;
   std::cout << "  Seeds:        " << numSeeds << std::endl;
+#ifdef ENABLE_DUT_PARAMETER_SPREAD
+  std::cout << "  DUT Spread:   "
+            << (enableDutSpread ? "ENABLED (multi-DUT population)"
+                                : "DISABLED (single nominal DUT)")
+            << std::endl;
+#else
+  std::cout << "  DUT Spread:   DISABLED (compiled with ENABLE_DUT_PARAMETER_SPREAD=OFF)" << std::endl;
+#endif
   std::cout << std::endl;
 
   auto taus = computeOctaveTaus(totalSamples, dt);
@@ -265,17 +305,54 @@ int main(int argc, char** argv) {
 
   auto totalStart = std::chrono::steady_clock::now();
 
+  std::vector<AdevResult> allResults(numSeeds);
+  std::atomic<int> completedSeeds{0};
+
+#ifdef _OPENMP
+  int maxThreads = omp_get_max_threads();
+  // Cap default concurrency based on RAM per seed (~24 GB budget) unless OMP_NUM_THREADS is set
+  int safeThreads = std::max(1, static_cast<int>(24000.0 / std::max(1.0, memPerRun)));
+  int numThreads = std::min({numSeeds, maxThreads, safeThreads});
+  if (std::getenv("OMP_NUM_THREADS") != nullptr) {
+    numThreads = std::min(numSeeds, maxThreads);
+  }
+  if (numSeeds > 1) {
+    std::cout << "  Threads:      " << numThreads << " (OpenMP)" << std::endl;
+  }
+#pragma omp parallel for schedule(dynamic, 1) num_threads(numThreads)
+#endif
   for (int s = 0; s < numSeeds; s++) {
     int seed = config.seed + s;
-
     auto runStart = std::chrono::steady_clock::now();
 
-    std::cout << "\r  Seed " << (s + 1) << "/" << numSeeds
-              << " (seed=" << seed << ") — simulating..." << std::flush;
+    if (numSeeds == 1) {
+      std::cout << "\r  Seed 1/1 (seed=" << seed << ") — simulating..." << std::flush;
+    }
 
-    AdevResult result = runSingleSeed(config, dt, totalSamples, seed, s, taus);
+    allResults[s] =
+        runSingleSeed(config, dt, totalSamples, seed, s, taus, enableDutSpread);
 
-    // Welford update
+    auto runEnd = std::chrono::steady_clock::now();
+    double runElapsed = std::chrono::duration<double>(runEnd - runStart).count();
+    double totalElapsed = std::chrono::duration<double>(runEnd - totalStart).count();
+    int done = ++completedSeeds;
+    double eta = (totalElapsed / done) * (numSeeds - done);
+
+#ifdef _OPENMP
+#pragma omp critical
+#endif
+    {
+      std::cout << "\r  Seed " << done << "/" << numSeeds
+                << " done (" << static_cast<int>(runElapsed) << "s)"
+                << " | Total: " << static_cast<int>(totalElapsed) << "s"
+                << " | ETA: " << static_cast<int>(eta) << "s     " << std::flush;
+    }
+  }
+  std::cout << std::endl;
+
+  // Deterministic Welford reduction in seed order (0 .. numSeeds - 1)
+  for (int s = 0; s < numSeeds; s++) {
+    const auto& result = allResults[s];
     int n = s + 1;
     for (int ax = 0; ax < 3; ax++) {
       for (size_t ti = 0; ti < numTaus; ti++) {
@@ -290,18 +367,7 @@ int main(int argc, char** argv) {
         gyro_m2[ax][ti] += delta_g * (val_g - gyro_mean[ax][ti]);
       }
     }
-
-    auto runEnd = std::chrono::steady_clock::now();
-    double runElapsed = std::chrono::duration<double>(runEnd - runStart).count();
-    double totalElapsed = std::chrono::duration<double>(runEnd - totalStart).count();
-    double eta = (totalElapsed / n) * (numSeeds - n);
-
-    std::cout << "\r  Seed " << (s + 1) << "/" << numSeeds
-              << " done (" << static_cast<int>(runElapsed) << "s)"
-              << " | Total: " << static_cast<int>(totalElapsed) << "s"
-              << " | ETA: " << static_cast<int>(eta) << "s     " << std::flush;
   }
-  std::cout << std::endl;
 
   // Write output CSV
   std::ofstream outFile(outputPath);

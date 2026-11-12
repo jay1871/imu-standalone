@@ -179,10 +179,6 @@ void ImuNbkSensor::RegisterPlugin() {
     if (!m || !d || !d->plugin_data) return -1;
     auto sensor = ImuNbkSensor::Create(m, d, instance);
     if (!sensor.has_value()) return -1;
-    if (d->plugin_data[instance] != 0) {
-      delete reinterpret_cast<ImuNbkSensor*>(d->plugin_data[instance]);
-      d->plugin_data[instance] = 0;
-    }
     d->plugin_data[instance] = reinterpret_cast<uintptr_t>(
         new ImuNbkSensor(std::move(*sensor)));
     return 0;

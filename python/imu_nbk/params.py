@@ -43,6 +43,12 @@ class ImuNbkParams:
     # Timing
     dt: float
 
+    # Optional multi-pole Gauss-Markov bias instability parameters — shape (3, M) when present
+    acc_B_poles: np.ndarray | None = None
+    acc_corr_time_poles: np.ndarray | None = None
+    gyro_B_poles: np.ndarray | None = None
+    gyro_corr_time_poles: np.ndarray | None = None
+
     def __eq__(self, other):
         if not isinstance(other, ImuNbkParams):
             return False
@@ -96,4 +102,8 @@ def load_config(yaml_path: str | Path) -> ImuNbkParams:
         gyro_misalignment_interval=np.array(gyro["interval_misalignment"], dtype=np.float64),
         gyro_resolution=np.array(gyro["resolution"], dtype=np.float64),
         dt=float(dt),
+        acc_B_poles=np.array(acc["B_poles"], dtype=np.float64) if "B_poles" in acc else None,
+        acc_corr_time_poles=np.array(acc["correlation_time_poles"], dtype=np.float64) if "correlation_time_poles" in acc else None,
+        gyro_B_poles=np.array(gyro["B_poles"], dtype=np.float64) if "B_poles" in gyro else None,
+        gyro_corr_time_poles=np.array(gyro["correlation_time_poles"], dtype=np.float64) if "correlation_time_poles" in gyro else None,
     )
