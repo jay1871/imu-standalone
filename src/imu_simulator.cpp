@@ -182,9 +182,11 @@ Eigen::Vector3d ImuSimulator::getConstTurnOnBias(
 ImuStochasticErrors ImuSimulator::getImuStochasticErrors(
     const MeasurementType& measurementType) const {
   if (measurementType == acc) {
-    return *pAccStochasticErrors_;
+    return pAccStochasticErrors_ ? *pAccStochasticErrors_
+                                 : ImuStochasticErrors();
   } else if (measurementType == gyro) {
-    return *pGyroStochasticErrors_;
+    return pGyroStochasticErrors_ ? *pGyroStochasticErrors_
+                                  : ImuStochasticErrors();
   } else {
     // Invalid measurement type
     std::cerr << "getImuStochasticErrors: Invalid measurement type!\n";
@@ -424,7 +426,7 @@ std::stringstream ImuSimulator::printImuSimulatorParameters() {
   ss << std::left << std::setw(50) << "Sampling time:" << std::fixed
      << std::setprecision(6) << dt_ << " s\n";
   ss << std::left << std::setw(50) << "Sampling frequency:" << std::fixed
-     << std::setprecision(6) << 1.0 / dt_ << " Hz\n";
+     << std::setprecision(6) << (dt_ > 0.0 ? 1.0 / dt_ : 0.0) << " Hz\n";
 
   ss << "***************************************************************"
         "**********************************************************************"
@@ -449,6 +451,8 @@ void ImuSimulator::setEnvironmentalParameters(
 void ImuSimulator::setSimulatorSeed(int seed) {
   seed_ = seed < 0 ? std::random_device{}() : static_cast<unsigned int>(seed);
   randomNumberGenerator_.seed(seed_);
+  normalDistribution_.reset();
+  uniformDistribution_.reset();
 }
 
 /**
@@ -1047,6 +1051,9 @@ double ImuSimulator::updateDiscreteTimeEquivalentStateSpaceModel(
     const AxisIdentifier axisId, int numPoles,
     const Eigen::Matrix<double, 1, kMaxGmPoles>& bPoles,
     const Eigen::Matrix<double, 1, kMaxGmPoles>& corrTimePoles) {
+  if (!pImuStochasticErrors || axisId < axisX || axisId > axisZ) {
+    return 0.0;
+  }
   const double safeDt = (dt_ > 0.0) ? dt_ : 0.001;
 
   // PSD velocity/angle random walk
@@ -1373,8 +1380,10 @@ void ImuSimulator::resetImuSimulator() {
   pGyroStochasticErrors_->z_K = Eigen::Vector3d::Zero();
   pGyroStochasticErrors_->z_B_poles.setZero();
 
-  // Re-seed RNG to produce the same sequence from the beginning
+  // Re-seed RNG and clear cached Box-Muller distribution state to produce the exact same sequence from the beginning
   randomNumberGenerator_.seed(seed_);
+  normalDistribution_.reset();
+  uniformDistribution_.reset();
 
   // Reset flag indicating if IMU constant errors are initialized
   constErrorsInitialized_ = false;

@@ -884,3 +884,60 @@ TEST_F(ImuSimulatorTest, GyroStochasticErrorModelTest) {
   EXPECT_NEAR(afterResetErrors.z_K(1), firstErrors.z_K(1), 1e-10);
   EXPECT_NEAR(afterResetErrors.z_K(2), firstErrors.z_K(2), 1e-10);
 }
+
+/**
+ * @brief Test multi-pole Gauss-Markov bank, pole-count clamping, deep-copy isolation, and reset
+ */
+TEST_F(ImuSimulatorTest, MultiPoleAndBoundsSafetyTest) {
+  auto accParams =
+      imuSimulator.getImuSimParams(imu_simulator::MeasurementType::acc);
+  auto gyroParams =
+      imuSimulator.getImuSimParams(imu_simulator::MeasurementType::gyro);
+
+  // Configure 3-pole bank on accelerometer and out-of-range numGmPoles = 10 on gyro (must clamp safely to kMaxGmPoles)
+  accParams.numGmPoles = 3;
+  accParams.B_poles << 5.4e-5, 5.8e-5, 1.2e-4, 0.0,
+                       5.2e-5, 5.4e-5, 9.2e-5, 0.0,
+                       1.0e-4, 1.0e-4, 1.5e-4, 0.0;
+  accParams.corrTime_poles << 20.0, 250.0, 4000.0, 100.0,
+                              21.0, 205.0, 2100.0, 100.0,
+                              15.0, 130.0, 1900.0, 100.0;
+
+  gyroParams.numGmPoles = 10;  // Exceeds kMaxGmPoles (4); must clamp safely without buffer overrun
+  gyroParams.B_poles.setConstant(5.0e-6);
+  gyroParams.corrTime_poles.setConstant(150.0);
+
+  imuSimulator.setImuSimParameters(accParams, gyroParams);
+  imuSimulator.setAccEnableStochasticError(true);
+  imuSimulator.setGyroEnableStochasticError(true);
+  imuSimulator.resetImuSimulator();
+
+  // Deep-copy simulator before stepping
+  imu_simulator::ImuSimulator copySim = imuSimulator;
+
+  Eigen::Vector3d a_zero = Eigen::Vector3d::Zero();
+  Eigen::Vector3d w_zero = Eigen::Vector3d::Zero();
+  Eigen::Quaterniond q_id = Eigen::Quaterniond::Identity();
+
+  Eigen::Vector3d a1 = imuSimulator.generateAccelerationMeasurement(a_zero, q_id);
+  Eigen::Vector3d g1 = imuSimulator.generateGyroscopeMeasurement(w_zero, q_id);
+
+  // Copy should produce identical sequence and not share internal state pointer
+  Eigen::Vector3d a1_copy = copySim.generateAccelerationMeasurement(a_zero, q_id);
+  Eigen::Vector3d g1_copy = copySim.generateGyroscopeMeasurement(w_zero, q_id);
+
+  EXPECT_DOUBLE_EQ(a1.x(), a1_copy.x());
+  EXPECT_DOUBLE_EQ(a1.y(), a1_copy.y());
+  EXPECT_DOUBLE_EQ(a1.z(), a1_copy.z());
+  EXPECT_DOUBLE_EQ(g1.x(), g1_copy.x());
+  EXPECT_DOUBLE_EQ(g1.y(), g1_copy.y());
+  EXPECT_DOUBLE_EQ(g1.z(), g1_copy.z());
+
+  // Reset original simulator and verify bitwise repeatability
+  imuSimulator.resetImuSimulator();
+  Eigen::Vector3d a1_reset = imuSimulator.generateAccelerationMeasurement(a_zero, q_id);
+  Eigen::Vector3d g1_reset = imuSimulator.generateGyroscopeMeasurement(w_zero, q_id);
+
+  EXPECT_DOUBLE_EQ(a1.x(), a1_reset.x());
+  EXPECT_DOUBLE_EQ(g1.x(), g1_reset.x());
+}

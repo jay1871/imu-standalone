@@ -394,11 +394,17 @@ int main(int argc, char** argv) {
     for (size_t ti = 0; ti < numTaus; ti++) {
       outFile << taus[ti];
       for (int ax = 0; ax < 3; ax++) {
-        double std_val = (numSeeds > 1) ? std::sqrt(acc_m2[ax][ti] / (numSeeds - 1)) : 0.0;
+        double std_val =
+            (numSeeds > 1)
+                ? std::sqrt(std::max(0.0, acc_m2[ax][ti] / (numSeeds - 1)))
+                : 0.0;
         outFile << "," << acc_mean[ax][ti] << "," << std_val;
       }
       for (int ax = 0; ax < 3; ax++) {
-        double std_val = (numSeeds > 1) ? std::sqrt(gyro_m2[ax][ti] / (numSeeds - 1)) : 0.0;
+        double std_val =
+            (numSeeds > 1)
+                ? std::sqrt(std::max(0.0, gyro_m2[ax][ti] / (numSeeds - 1)))
+                : 0.0;
         outFile << "," << gyro_mean[ax][ti] << "," << std_val;
       }
       outFile << "\n";

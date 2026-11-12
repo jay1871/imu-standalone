@@ -83,11 +83,14 @@ std::optional<ImuNbkSensor> ImuNbkSensor::Create(const mjModel* m, mjData*,
 void ImuNbkSensor::Reset(const mjModel* m, int instance) {
   (void)m;
   (void)instance;
-  sim_->resetImuSimulator();
+  if (sim_) {
+    sim_->resetImuSimulator();
+  }
 }
 
 void ImuNbkSensor::Compute(const mjModel* m, mjData* d, int instance) {
-  if (!m || !d || !sim_ || site_id_ < 0 || site_id_ >= m->nsite) {
+  if (!m || !d || !d->sensordata || !d->site_xmat || !sim_ || site_id_ < 0 ||
+      site_id_ >= m->nsite) {
     return;
   }
 
@@ -176,7 +179,10 @@ void ImuNbkSensor::RegisterPlugin() {
   plugin.nsensordata = +[](const mjModel*, int, int) -> int { return 6; };
 
   plugin.init = +[](const mjModel* m, mjData* d, int instance) -> int {
-    if (!m || !d || !d->plugin_data) return -1;
+    if (!m || !d || !d->plugin_data || instance < 0 || instance >= m->nplugin) {
+      return -1;
+    }
+    d->plugin_data[instance] = 0;
     auto sensor = ImuNbkSensor::Create(m, d, instance);
     if (!sensor.has_value()) return -1;
     d->plugin_data[instance] = reinterpret_cast<uintptr_t>(
@@ -185,7 +191,7 @@ void ImuNbkSensor::RegisterPlugin() {
   };
 
   plugin.destroy = +[](mjData* d, int instance) {
-    if (!d || !d->plugin_data) return;
+    if (!d || !d->plugin_data || instance < 0) return;
     delete reinterpret_cast<ImuNbkSensor*>(d->plugin_data[instance]);
     d->plugin_data[instance] = 0;
   };
@@ -197,6 +203,9 @@ void ImuNbkSensor::RegisterPlugin() {
   };
 
   plugin.compute = +[](const mjModel* m, mjData* d, int instance, int) {
+    if (!m || !d || !d->plugin_data || instance < 0 || instance >= m->nplugin) {
+      return;
+    }
     auto* sensor =
         reinterpret_cast<ImuNbkSensor*>(d->plugin_data[instance]);
     if (sensor) sensor->Compute(m, d, instance);
