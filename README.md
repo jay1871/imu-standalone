@@ -881,3 +881,8 @@ The YAML config sets `enable_local_ref_vec: true` by default (standalone navigat
 - ADIS16607 Datasheet, Analog Devices
 - [MuJoCo Plugin API](https://mujoco.readthedocs.io/en/stable/programming/extension.html)
 - [MJX Documentation](https://mujoco.readthedocs.io/en/stable/mjx.html)
+
+## License
+
+This project is licensed under the **BSD 3-Clause License** — see the [LICENSE](LICENSE) file for details.
+
