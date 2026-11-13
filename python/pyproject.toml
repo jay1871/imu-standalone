@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mujoco = ["mujoco>=3.11.0"]
+mujoco = ["mujoco>=3.12.0"]
 jax-cpu = ["jax[cpu]"]
 jax-cuda = ["jax[cuda12]"]
 jax-rocm = ["jax-rocm7"]
@@ -22,7 +22,7 @@ test = [
     "pytest>=7.0",
     "allantools>=2019.9",
     "matplotlib>=3.5",
-    "mujoco>=3.11.0",
+    "mujoco>=3.12.0",
 ]
 
 [tool.setuptools.packages.find]

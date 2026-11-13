@@ -6,4 +6,4 @@ pyyaml>=5.0
 
 # Testing and simulation
 pytest>=7.0
-mujoco>=3.11.0
+mujoco>=3.12.0

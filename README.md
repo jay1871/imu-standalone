@@ -68,8 +68,8 @@ conda activate imu
 > The Python `mujoco` package must be the **same version**, or the plugin will fail
 > to load with `"plugin not found"`.
 > ```bash
-> # Match your MUJOCO_ROOT build (e.g. mujoco-3.11.0):
-> pip install mujoco==3.11.0
+> # Match your MUJOCO_ROOT build (e.g. mujoco-3.12.0):
+> pip install mujoco==3.12.0
 > ```
 
 ### Installing Python Dependencies & Package
